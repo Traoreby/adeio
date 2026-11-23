@@ -72,7 +72,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="board-section section-pad" data-reveal>
+      <section className={`board-section section-pad${executive.length ? "" : " board-section-empty"}`} data-reveal>
         <OptionalBackground asset="about-bg" className="board-background" sizes="(max-width: 760px) 100vw, 58vw" />
         <div className="container section-heading-row">
           <div><div className="eyebrow">GOUVERNANCE</div><h2>Le bureau exécutif</h2><p>Les personnes qui représentent l’association et font avancer ses projets.</p></div>
@@ -84,11 +84,11 @@ export default async function HomePage() {
               <div className="person-photo">{person.photoUrl ? <Image src={person.photoUrl} alt={person.name} fill sizes="(max-width: 768px) 100vw, 33vw" /> : <UsersRound size={34} />}</div>
               <div className="person-info"><span>{person.position}</span><h3>{person.name}</h3></div>
             </CardContent></Card>
-          )) : <div className="empty-board"><div className="empty-board-icon"><UsersRound size={24} /></div><div><strong>Une équipe au service d’ADEIO</strong><p>La composition officielle du bureau sera publiée ici.</p></div><Link href="/bureau" aria-label="Voir la page du bureau"><ArrowRight size={19} /></Link></div>}
+          )) : <div className="empty-board"><div className="empty-board-icon"><UsersRound size={24} /></div><div><div className="eyebrow eyebrow-green">GOUVERNANCE ADEIO</div><strong>Le bureau exécutif sera présenté ici</strong><p>Cette rubrique affichera les responsables et leurs fonctions après l’enregistrement du mandat officiel.</p></div><Link href="/bureau" className="empty-board-link">Découvrir la rubrique <ArrowRight size={16} /></Link></div>}
         </div>
       </section>
 
-      <section className="news-section section-pad" data-reveal>
+      <section className={`news-section section-pad${announcements.length ? "" : " news-section-empty"}`} data-reveal>
         <div className="container section-heading-row">
           <div><div className="eyebrow eyebrow-green">À LA UNE</div><h2>Les nouvelles d’ADEIO</h2><p>Les annonces et temps forts de la vie associative.</p></div>
           <Button asChild variant="outline"><Link href="/actualites">Toutes les actualités <ArrowRight size={16} /></Link></Button>
@@ -101,7 +101,7 @@ export default async function HomePage() {
               <div><time>{formatDate(item.published_at)}</time><h3>{item.title}</h3><p>{item.summary || item.body.slice(0, 150)}</p></div>
               <span className="text-link">Lire l’annonce <ArrowRight size={15} /></span>
             </Link>
-          )) : <div className="empty-news"><div className="empty-news-icon"><CheckCircle2 size={22} /></div><div><strong>Les actualités arrivent bientôt</strong><p>Les prochaines annonces de l’association seront publiées dans cet espace.</p></div></div>}
+          )) : <div className="empty-news"><div className="empty-news-icon"><CheckCircle2 size={22} /></div><div><div className="eyebrow eyebrow-green">ACTUALITÉS ADEIO</div><strong>Aucune annonce publiée pour le moment</strong><p>Les informations validées par l’association apparaîtront ici dès leur publication.</p></div><Link href="/contact" className="empty-news-link">Contacter ADEIO <ArrowRight size={16} /></Link></div>}
         </div>
       </section>
 

@@ -15,7 +15,8 @@ export default async function MemberDirectoryPage({ searchParams }: Props) {
   const [{ supabase, user, roles }, params] = await Promise.all([getSignedInUser(), searchParams]);
   if (!supabase) return <section className="section-pad"><div className="container empty-state"><h1>Annuaire indisponible</h1><p>Le projet Supabase doit être raccordé avant l’activation des données membres.</p></div></section>;
   if (!user) redirect("/connexion?next=%2Fmembres");
-  if (!roles.includes("member")) redirect("/espace-membre?erreur=acces-refuse");
+  const canManageMembers = roles.includes("admin") || roles.includes("super_admin");
+  if (!roles.includes("member") && !canManageMembers) redirect("/espace-membre?erreur=acces-refuse");
   const query = (params.q ?? "").trim().replace(/[^\p{L}\p{N}\s-]/gu, " ").slice(0, 80);
   const year = /^\d{4}$/.test(params.annee ?? "") ? params.annee! : "";
   const page = Math.max(1, Math.min(10000, Number.parseInt(params.page ?? "1", 10) || 1));
@@ -33,7 +34,7 @@ export default async function MemberDirectoryPage({ searchParams }: Props) {
   return <section className="member-space-page section-pad"><div className="container"><div className="member-space-heading"><div><div className="eyebrow eyebrow-green">COMMUNAUTÉ ADEIO</div><h1>Annuaire des membres</h1><p>Annuaire réservé aux membres connectés. Les coordonnées personnelles n’y figurent pas.</p></div><Link href="/espace-membre" className="text-link">Mon espace membre</Link></div>
     <form className="member-search-form"><label><Search size={17} /><input name="q" defaultValue={query} placeholder="Rechercher par nom ou numéro ADEIO" aria-label="Rechercher un membre" /></label><label className="year-filter-label">Présent en année <input name="annee" type="number" min="1900" max="2200" defaultValue={year} placeholder="Ex. 2024" /></label><button type="submit" className="admin-submit">Rechercher</button></form>
     <div className="member-directory-grid">{cards.map((member) => <article className="member-directory-card" key={member.id}><div className="member-directory-avatar">{member.photoUrl ? <Image src={member.photoUrl} alt={`Photo de ${member.first_name} ${member.last_name}`} fill sizes="72px" /> : <UserRound size={28} />}</div><div><span className="status-chip">{memberStatusLabels.active}</span><h2>{member.first_name} {member.last_name}</h2><p>{member.member_number}</p><small>Membre depuis {member.joined_year}</small></div></article>)}</div>
-    {!cards.length && <div className="member-space-empty">Aucun membre actif ne correspond à votre recherche.</div>}
+    {!cards.length && <div className="member-space-empty"><h2>{query || year ? "Aucun résultat pour ces critères" : "L’annuaire ne contient pas encore de fiches"}</h2><p>{query || year ? "Vérifiez le nom, le numéro ADEIO ou l’année de présence, ou effacez les filtres pour reprendre la recherche." : "Les fiches des membres actifs apparaîtront ici après leur ajout dans la plateforme."}</p>{query || year ? <Link href="/membres" className="text-link">Effacer les filtres</Link> : canManageMembers ? <Link href="/admin/membres/nouveau" className="text-link">Ajouter la première fiche membre</Link> : null}</div>}
     <PaginationLinks pathname="/membres" page={page} hasNext={(count ?? 0) > page * pageSize} query={{ q: query, annee: year }} />
     <p className="member-directory-footnote">Pour toute correction de vos propres informations, contactez l’administration ADEIO.</p>
   </div></section>;

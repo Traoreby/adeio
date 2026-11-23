@@ -22,6 +22,28 @@ function toStringValue(formData: FormData, field: string) {
 
 const idSchema = z.string().uuid();
 
+export async function setFormerMembersVisibilityAction(formData: FormData) {
+  const { supabase, user, roles } = await getSignedInUser();
+  if (!supabase || !user) redirect("/connexion?next=/admin/parametres");
+  if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Fparametres");
+
+  const parsed = z.enum(["true", "false"]).safeParse(toStringValue(formData, "visible"));
+  if (!parsed.success) redirect("/admin/parametres?erreur=reglage-invalide");
+  const visible = parsed.data === "true";
+  const { error } = await supabase.from("settings").upsert({
+    key: "former_members_visibility",
+    value: visible,
+    updated_by: user.id,
+  });
+  if (error) redirect("/admin/parametres?erreur=modification-impossible");
+
+  revalidatePath("/admin/parametres");
+  revalidatePath("/membres");
+  revalidatePath("/archives");
+  redirect(`/admin/parametres?statut=${visible ? "archives-visibles" : "archives-masquees"}`);
+}
+
 export async function inviteMemberAccountAction(formData: FormData) {
   const { supabase, user, roles } = await getSignedInUser();
   if (!supabase || !user) redirect("/connexion?next=/admin/utilisateurs");

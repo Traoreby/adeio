@@ -88,6 +88,10 @@ export async function createMemberAction(formData: FormData) {
     redirect("/admin/membres/nouveau?erreur=creation-impossible");
   }
   revalidatePath("/admin/membres");
+  revalidatePath("/admin/archives");
+  revalidatePath("/membres");
+  revalidatePath("/archives");
+  revalidatePath("/");
   redirect(`/admin/membres/${member.id}?statut=membre-cree`);
 }
 
