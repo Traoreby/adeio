@@ -53,12 +53,21 @@ Les rôles Trésorier, Commissaire aux comptes, Administrateur et Super-administ
 
 ## Mise en production
 
-1. Créer le projet Supabase de production et appliquer les migrations.
-2. Déployer le dépôt sur Vercel.
-3. Définir les variables d’environnement sur Vercel, y compris la clé service role en variable serveur chiffrée.
-4. Configurer les URL de redirection Supabase avec le domaine HTTPS final.
-5. Compléter et valider les mentions légales, la politique de confidentialité, les contacts, les noms du bureau et les textes officiels avant l’ouverture publique.
-6. Vérifier les sauvegardes quotidiennes dans le plan Supabase choisi et les renouveler régulièrement par un exercice de restauration.
+### Configuration initiale (une seule fois)
+
+1. Dans Supabase **Project Settings → Integrations → GitHub Integration**, lier `Traoreby/adeio`, choisir `.` comme répertoire de travail et activer **Deploy to production** pour la branche `master`. L’intégration vérifie les migrations des demandes de fusion et applique les nouvelles migrations lors du déploiement de production.
+2. Dans Vercel, lier le même dépôt et choisir `master` comme branche de production. Les pushes sur cette branche déclenchent alors le déploiement Next.js.
+3. Définir les variables de production sur Vercel : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL` et `SUPABASE_SECRET_KEY` (serveur seulement). Les clés secrètes doivent rester dans les variables Vercel et ne jamais être ajoutées au dépôt.
+4. Dans Supabase Auth, configurer l’URL du site et autoriser `https://adeio.vercel.app/auth/callback` ainsi que les URL de récupération nécessaires. Ces réglages Auth ne sont pas déployés par l’intégration GitHub Supabase.
+5. Vérifier les sauvegardes quotidiennes selon le plan Supabase et effectuer régulièrement un exercice de restauration.
+
+### Déploiements suivants
+
+1. Toute évolution SQL est ajoutée dans un nouveau fichier horodaté de `supabase/migrations/`; ne pas modifier une migration déjà appliquée et ne pas exécuter manuellement son SQL en production.
+2. Pousser ou fusionner le changement dans `master`. Vercel construit et déploie le site; l’intégration Supabase vérifie et applique les migrations de production lorsque **Deploy to production** est actif.
+3. Sur GitHub, vérifier le statut Vercel et celui de Supabase avant de considérer la mise à jour terminée. Ces deux opérations sont déclenchées par le même changement Git, mais s’exécutent séparément.
+
+`supabase/seed.sql` sert aux environnements locaux et de preview; il n’est pas appliqué automatiquement aux données de production. Les nouvelles configurations Auth, les variables d’environnement et les contenus métier restent des réglages distincts des migrations SQL.
 
 Les migrations ne contiennent aucun mot de passe ni compte administrateur de démonstration. Les buckets Supabase sont privés.
 
