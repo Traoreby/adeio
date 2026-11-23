@@ -27,10 +27,10 @@ type PublicExecutiveRow = {
   photo_path: string | null;
 };
 
-export async function getPublishedAnnouncements(limit = 12): Promise<Announcement[]> {
+export async function getPublishedAnnouncements(limit = 12, offset = 0): Promise<Announcement[]> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return [];
-  const { data, error } = await supabase.rpc("get_visible_announcements", { p_limit: limit });
+  const { data, error } = await supabase.rpc("get_visible_announcements", { p_limit: limit, p_offset: offset });
 
   if (error) return [];
   return (data ?? []) as Announcement[];

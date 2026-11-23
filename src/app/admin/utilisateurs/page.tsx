@@ -18,6 +18,7 @@ const messages: Record<string, string> = {
 const errors: Record<string, string> = {
   "formulaire-invalide": "Vérifiez les informations saisies.",
   "cle-serveur-manquante": "La variable serveur SUPABASE_SECRET_KEY doit être configurée pour envoyer des invitations.",
+  "url-site-manquante": "Configurez NEXT_PUBLIC_SITE_URL pour envoyer des invitations.",
   "email-deja-utilise": "Cette adresse e-mail est déjà associée à un compte.",
   "invitation-impossible": "L’invitation n’a pas pu être envoyée.",
   "role-impossible": "La modification du rôle n’a pas abouti.",

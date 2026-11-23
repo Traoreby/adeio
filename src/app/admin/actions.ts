@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
+import { getSiteBaseUrl } from "@/lib/site-url";
 
 const announcementSchema = z.object({
   title: z.string().trim().min(3, "Le titre doit contenir au moins 3 caractères.").max(140),
@@ -33,7 +34,8 @@ export async function inviteMemberAccountAction(formData: FormData) {
   if (!parsed.success) redirect("/admin/utilisateurs?erreur=formulaire-invalide");
   const serviceClient = createSupabaseServiceClient();
   if (!serviceClient) redirect("/admin/utilisateurs?erreur=cle-serveur-manquante");
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+  const siteUrl = await getSiteBaseUrl();
+  if (!siteUrl) redirect("/admin/utilisateurs?erreur=url-site-manquante");
   const { error } = await serviceClient.auth.admin.inviteUserByEmail(parsed.data.email, {
     redirectTo: `${siteUrl}/auth/callback?next=/mot-de-passe`,
     data: { display_name: parsed.data.displayName },

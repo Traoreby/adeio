@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertCircle, ArrowLeft } from "lucide-react";
-import { getSignedInUser } from "@/lib/auth";
+import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
 import { AdminShell } from "@/components/admin-shell";
 
 export default async function AdminLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -11,9 +11,6 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
   if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
   const { data: profile } = await supabase.from("profiles").select("must_change_password,mfa_enabled").eq("user_id", user.id).maybeSingle();
   if (profile?.must_change_password) redirect("/mot-de-passe");
-  if (profile?.mfa_enabled) {
-    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assurance?.currentLevel !== "aal2") redirect("/auth/mfa?next=%2Fadmin");
-  }
+  if (!await hasRequiredMfa(supabase, user.id, profile?.mfa_enabled ?? false)) redirect("/auth/mfa?next=%2Fadmin");
   return <AdminShell email={user.email ?? "Compte ADEIO"} roles={roles}>{children}</AdminShell>;
 }

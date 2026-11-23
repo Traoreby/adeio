@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { safeRedirectPath } from "@/lib/redirect";
+import { loginMemberAction } from "@/app/connexion/actions";
 import { Button } from "@/components/ui/button";
 
 const credentialsSchema = z.object({
@@ -19,7 +19,6 @@ type Credentials = z.infer<typeof credentialsSchema>;
 type Recovery = z.infer<typeof recoverySchema>;
 
 export function AuthForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [mode, setMode] = useState<"login" | "recovery">("login");
   const [message, setMessage] = useState("");
@@ -31,19 +30,8 @@ export function AuthForm() {
 
   async function onLogin(values: Credentials) {
     setMessage(""); setFatalError("");
-    const supabase = createSupabaseBrowserClient();
-    if (!supabase) return setFatalError(process.env.NODE_ENV !== "production" ? "L’espace membre n’est pas encore configuré. Merci de revenir ultérieurement." : "La connexion est réservée aux membres invités par l’administration.");
-    const { error } = await supabase.auth.signInWithPassword(values);
-    if (error) return setFatalError("Adresse e-mail ou mot de passe incorrect.");
-    const destination = safeRedirectPath(searchParams.get("next"), window.location.origin, "/espace-membre");
-    const { data: assurance } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-    if (assurance?.currentLevel === "aal1" && assurance.nextLevel === "aal2") {
-      router.replace(`/auth/mfa?next=${encodeURIComponent(destination)}`);
-      router.refresh();
-      return;
-    }
-    router.replace(destination);
-    router.refresh();
+    const result = await loginMemberAction({ ...values, next: searchParams.get("next") ?? undefined });
+    if (result.error) return setFatalError(result.error);
   }
 
   async function onRecovery(values: Recovery) {
