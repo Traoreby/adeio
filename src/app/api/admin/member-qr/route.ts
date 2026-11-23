@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import QRCode from "qrcode";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
+import { getSiteBaseUrl } from "@/lib/site-url";
 
 export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -21,7 +22,8 @@ export async function POST(request: NextRequest) {
   const tokenHash = createHash("sha256").update(token).digest("hex");
   const { error } = await supabase.rpc("rotate_member_qr_tokens", { p_items: [{ member_id: member.id, token_hash: tokenHash }] });
   if (error) return NextResponse.json({ error: "Le QR Code n’a pas pu être émis. Appliquez la migration Phase 2." }, { status: 503 });
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin).replace(/\/$/, "");
+  const baseUrl = await getSiteBaseUrl();
+  if (!baseUrl) return NextResponse.json({ error: "L’URL publique du site n’est pas configurée." }, { status: 503 });
   const verificationUrl = `${baseUrl}/verification/${token}`;
   const image = await QRCode.toDataURL(verificationUrl, { width: 280, margin: 2, errorCorrectionLevel: "M" });
   return NextResponse.json({ verificationUrl, image, memberNumber: member.member_number });

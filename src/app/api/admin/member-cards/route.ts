@@ -5,6 +5,7 @@ import QRCode from "qrcode";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
 import { getConsentedMemberPhotoUrl } from "@/lib/supabase/service";
+import { getSiteBaseUrl } from "@/lib/site-url";
 
 const inputSchema = z.object({ memberIds: z.array(z.string().uuid()).min(1).max(100) });
 const ORANGE = rgb(0.969, 0.498, 0);
@@ -30,7 +31,8 @@ export async function POST(request: NextRequest) {
   const { data: members, error } = await supabase.from("members").select("id,member_number,first_name,last_name,joined_year,status,photo_path,photo_public_consent,executive_members(position:executive_positions(title),term:executive_terms(is_current))").in("id", parsed.data.memberIds);
   if (error || !members || members.length !== parsed.data.memberIds.length) return NextResponse.json({ error: "Un ou plusieurs membres sont introuvables." }, { status: 404 });
 
-  const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin).replace(/\/$/, "");
+  const baseUrl = await getSiteBaseUrl();
+  if (!baseUrl) return NextResponse.json({ error: "L’URL publique du site n’est pas configurée." }, { status: 503 });
   const prepared = await Promise.all(members.map(async (member) => {
     const token = randomBytes(32).toString("hex");
     const tokenHash = createHash("sha256").update(token).digest("hex");

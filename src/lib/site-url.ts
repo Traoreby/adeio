@@ -1,11 +1,22 @@
 import { headers } from "next/headers";
 
 export async function getSiteBaseUrl() {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, "");
-  if (configured) return configured;
+  const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (configured) {
+    try {
+      const url = new URL(configured);
+      if (process.env.NODE_ENV === "production" && url.protocol !== "https:") return null;
+      return url.origin;
+    } catch {
+      return null;
+    }
+  }
 
-  const productionDomain = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
-  if (productionDomain) return `https://${productionDomain.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
+  // Email links must always use the configured canonical HTTPS URL in production.
+  if (process.env.NODE_ENV === "production") return null;
+
+  const developmentDomain = process.env.VERCEL_URL;
+  if (developmentDomain) return `https://${developmentDomain.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
 
   const requestHeaders = await headers();
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");

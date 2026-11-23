@@ -11,8 +11,13 @@ major_version = 17
 
 [auth]
 enabled = true
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["http://127.0.0.1:3000/auth/callback"]
+site_url = "https://adeio.vercel.app"
+additional_redirect_urls = [
+  "https://adeio.vercel.app/auth/callback",
+  "https://adeio.vercel.app/**",
+  "http://localhost:3000/auth/callback",
+  "http://localhost:3000/**",
+]
 enable_signup = false
 
 [auth.email]

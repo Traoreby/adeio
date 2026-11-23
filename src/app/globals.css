@@ -703,7 +703,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
   .hero-logo-card { animation: logo-float 7s ease-in-out 900ms infinite; }
   @keyframes hero-appear { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes logo-float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
-  html.motion-ready [data-reveal] { opacity: 0; transform: translateY(18px); transition: opacity .62s ease var(--reveal-delay,0ms), transform .62s cubic-bezier(.2,.75,.25,1) var(--reveal-delay,0ms); }
+  html.motion-ready [data-reveal].reveal-pending { opacity: 0; transform: translateY(18px); transition: opacity .62s ease var(--reveal-delay,0ms), transform .62s cubic-bezier(.2,.75,.25,1) var(--reveal-delay,0ms); }
   html.motion-ready [data-reveal].is-visible { opacity: 1; transform: translateY(0); }
 }
 
