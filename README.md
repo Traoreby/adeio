@@ -28,7 +28,7 @@ Sans les variables Supabase, les pages publiques restent consultables et affiche
 | `NEXT_PUBLIC_SUPABASE_URL` | Oui en production | URL du projet Supabase |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Oui en production | Clé publique publishable Supabase |
 | `NEXT_PUBLIC_SITE_URL` | Oui en production | URL canonique utilisée pour les liens d’authentification |
-| `SUPABASE_SERVICE_ROLE_KEY` | Oui pour invitations, première connexion et synchronisation MFA | API serveur uniquement ; ne jamais préfixer par `NEXT_PUBLIC_` |
+| `SUPABASE_SECRET_KEY` | Oui pour invitations, première connexion et synchronisation MFA | Clé serveur à privilèges élevés ; la garder uniquement côté serveur, jamais sous `NEXT_PUBLIC_` |
 | `CONTACT_EMAIL` | Facultative | E-mail officiel affiché dans le pied de page et la page Contact |
 | `CONTACT_PHONE` | Facultative | Téléphone officiel affiché dans la page Contact |
 | `CONTACT_WHATSAPP` | Facultative | Numéro WhatsApp officiel affiché dans la page Contact |

@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   if (passwordError) return NextResponse.json({ error: "Le mot de passe n’a pas pu être modifié." }, { status: 400 });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) return NextResponse.json({ error: "Clé serveur Supabase manquante." }, { status: 503 });
   const serviceClient = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const { error: profileError } = await serviceClient.from("profiles").update({ must_change_password: false }).eq("user_id", user.id);
