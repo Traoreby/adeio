@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 600" fill="none">
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2=".8"><stop stop-color="#006b42"/><stop offset=".58" stop-color="#007a49"/><stop offset="1" stop-color="#005e3a"/></linearGradient>
+    <pattern id="lines" width="42" height="42" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><path d="M0 0v42" stroke="#fff" stroke-opacity=".055" stroke-width="1"/></pattern>
+    <radialGradient id="orange"><stop stop-color="#f77f00" stop-opacity=".42"/><stop offset="1" stop-color="#f77f00" stop-opacity="0"/></radialGradient>
+    <radialGradient id="green"><stop stop-color="#009e60" stop-opacity=".36"/><stop offset="1" stop-color="#009e60" stop-opacity="0"/></radialGradient>
+  </defs>
+  <path fill="url(#base)" d="M0 0h1600v600H0z"/>
+  <path fill="url(#lines)" d="M0 0h1600v600H0z"/>
+  <circle cx="1220" cy="200" r="340" fill="url(#orange)"/>
+  <circle cx="1450" cy="540" r="370" fill="url(#green)"/>
+  <circle cx="1270" cy="220" r="180" stroke="#fff" stroke-opacity=".13"/>
+  <circle cx="1270" cy="220" r="235" stroke="#f77f00" stroke-opacity=".25"/>
+  <path d="M890 600c180-182 337-276 710-315M1030 600c154-118 277-172 570-202" stroke="#fff" stroke-opacity=".12" stroke-width="1.5"/>
+  <circle cx="1082" cy="106" r="7" fill="#f77f00" fill-opacity=".8"/>
+  <circle cx="1480" cy="406" r="5" fill="#fff" fill-opacity=".66"/>
+</svg>
