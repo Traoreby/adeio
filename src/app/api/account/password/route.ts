@@ -1,9 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServiceClient } from "@/lib/supabase/service";
+import { safeRedirectPath } from "@/lib/redirect";
 
-const passwordSchema = z.object({ password: z.string().min(10).max(128) });
+const passwordSchema = z.object({
+  password: z.string().min(10, "Utilisez au moins 10 caractères.").max(128),
+  next: z.string().max(2048).optional(),
+});
 
 export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -22,14 +26,26 @@ export async function POST(request: NextRequest) {
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) return NextResponse.json({ error: "Session expirée. Reconnectez-vous." }, { status: 401 });
 
+  const [{ data: roleRows, error: rolesError }, serviceClient] = await Promise.all([
+    supabase.from("user_roles").select("role").eq("user_id", user.id),
+    Promise.resolve(createSupabaseServiceClient()),
+  ]);
+  if (rolesError || !roleRows?.length) return NextResponse.json({ error: "Le rôle de ce compte n’a pas pu être vérifié. Contactez l’administration." }, { status: 503 });
+  if (!serviceClient) return NextResponse.json({ error: "La finalisation sécurisée du compte est momentanément indisponible." }, { status: 503 });
+
+  const roles = roleRows.map((row) => row.role);
+  const isAdmin = roles.includes("admin") || roles.includes("super_admin");
+  const fallback = isAdmin ? "/admin" : "/espace-membre";
+  let redirectTo = safeRedirectPath(parsed.data.next ?? null, request.url, fallback);
+  const destinationPath = new URL(redirectTo, request.url).pathname;
+  if (destinationPath === "/connexion" || destinationPath === "/mot-de-passe" || destinationPath.startsWith("/auth/") || (!isAdmin && destinationPath.startsWith("/admin"))) {
+    redirectTo = fallback;
+  }
+
   const { error: passwordError } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (passwordError) return NextResponse.json({ error: "Le mot de passe n’a pas pu être modifié." }, { status: 400 });
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) return NextResponse.json({ error: "Clé serveur Supabase manquante." }, { status: 503 });
-  const serviceClient = createClient(url, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const { error: profileError } = await serviceClient.from("profiles").update({ must_change_password: false }).eq("user_id", user.id);
-  if (profileError) return NextResponse.json({ error: "Mot de passe modifié. La finalisation du compte est temporairement indisponible ; réessayez." }, { status: 503 });
-  return NextResponse.json({ ok: true });
+  if (profileError) return NextResponse.json({ error: "Le mot de passe a été mis à jour, mais la finalisation du compte a échoué. Réessayez ou contactez l’administration." }, { status: 503 });
+  return NextResponse.json({ ok: true, redirectTo }, { headers: { "Cache-Control": "no-store" } });
 }

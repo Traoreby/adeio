@@ -6,8 +6,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { ArrowLeft, ArrowRight, Eye, EyeOff, KeyRound, Mail, ShieldCheck } from "lucide-react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/browser";
-import { loginMemberAction } from "@/app/connexion/actions";
+import { loginMemberAction, requestPasswordResetAction } from "@/app/connexion/actions";
 import { Button } from "@/components/ui/button";
 
 const credentialsSchema = z.object({
@@ -20,13 +19,18 @@ type Recovery = z.infer<typeof recoverySchema>;
 
 export function AuthForm() {
   const searchParams = useSearchParams();
-  const [mode, setMode] = useState<"login" | "recovery">("login");
+  const [mode, setMode] = useState<"login" | "recovery">(() => searchParams.get("recovery") === "1" ? "recovery" : "login");
   const [message, setMessage] = useState("");
   const [fatalError, setFatalError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const credentials = useForm<Credentials>({ resolver: zodResolver(credentialsSchema) });
   const recovery = useForm<Recovery>({ resolver: zodResolver(recoverySchema) });
   const configured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
+  const callbackError = {
+    "lien-invalide": "Ce lien de connexion ou de récupération n’est pas valide. Demandez un nouveau lien.",
+    "lien-expire": "Ce lien a expiré ou a déjà été utilisé. Demandez-en un nouveau.",
+    "service-indisponible": "Le service de connexion est momentanément indisponible. Réessayez plus tard.",
+  }[searchParams.get("erreur") ?? ""];
 
   async function onLogin(values: Credentials) {
     setMessage(""); setFatalError("");
@@ -36,14 +40,9 @@ export function AuthForm() {
 
   async function onRecovery(values: Recovery) {
     setMessage(""); setFatalError("");
-    const supabase = createSupabaseBrowserClient();
-    if (!supabase) return setFatalError(process.env.NODE_ENV !== "production" ? "La réinitialisation sera disponible après configuration de l’espace membre." : "La réinitialisation du mot de passe est momentanément indisponible. Contactez l’administration ADEIO.");
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
-    const { error } = await supabase.auth.resetPasswordForEmail(values.email, {
-      redirectTo: `${siteUrl}/auth/callback?next=/mot-de-passe`,
-    });
-    if (error) return setFatalError("L’envoi du lien a échoué. Vérifiez l’adresse ou réessayez plus tard.");
-    setMessage("Si un compte correspond à cette adresse, un lien de réinitialisation vient d’être envoyé.");
+    const result = await requestPasswordResetAction(values);
+    if (result.error) return setFatalError(result.error);
+    setMessage("Si un compte correspond à cette adresse, un lien de récupération vient d’être envoyé. Vérifiez aussi vos courriers indésirables.");
   }
 
   return <div className="auth-card">
@@ -51,10 +50,11 @@ export function AuthForm() {
     <div className="eyebrow eyebrow-green">{mode === "login" ? "ESPACE MEMBRE" : "RÉCUPÉRATION DU COMPTE"}</div>
     <h1>{mode === "login" ? "Bon retour parmi nous." : "Réinitialiser le mot de passe"}</h1>
     <p>{mode === "login" ? "Connectez-vous avec l’adresse e-mail associée à votre compte ADEIO." : "Un lien sécurisé sera envoyé à l’adresse associée à votre compte."}</p>
+    {callbackError && !message && <div role="alert" className="form-alert error-alert">{callbackError}</div>}
     {mode === "login" ? <form className="form-stack" onSubmit={credentials.handleSubmit(onLogin)}>
       <label htmlFor="login-email">Adresse e-mail</label><div className="input-with-icon"><Mail size={17} aria-hidden="true" /><input id="login-email" type="email" autoComplete="off" placeholder="Saisissez votre adresse e-mail" aria-invalid={Boolean(credentials.formState.errors.email)} aria-describedby={credentials.formState.errors.email ? "login-email-error" : undefined} {...credentials.register("email")} /></div>
       {credentials.formState.errors.email && <span id="login-email-error" className="field-error" role="alert">{credentials.formState.errors.email.message}</span>}
-      <div className="label-row"><label htmlFor="login-password">Mot de passe</label><button type="button" className="text-button" onClick={() => { setMode("recovery"); setFatalError(""); setMessage(""); }}>Mot de passe oublié ?</button></div>
+      <div className="label-row"><label htmlFor="login-password">Mot de passe</label><button type="button" className="text-button" onClick={() => { recovery.setValue("email", credentials.getValues("email")); setMode("recovery"); setFatalError(""); setMessage(""); }}>Mot de passe oublié ?</button></div>
       <div className="password-input-wrap"><input id="login-password" className="form-input" type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="Votre mot de passe" aria-invalid={Boolean(credentials.formState.errors.password)} aria-describedby={credentials.formState.errors.password ? "login-password-error" : undefined} {...credentials.register("password")} /><button className="password-visibility" type="button" aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"} aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>{showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}</button></div>
       {credentials.formState.errors.password && <span id="login-password-error" className="field-error" role="alert">{credentials.formState.errors.password.message}</span>}
       {fatalError && <div role="alert" className="form-alert error-alert">{fatalError}</div>}

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -16,19 +17,25 @@ type Values = z.infer<typeof schema>;
 
 export function PasswordUpdateForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [error, setError] = useState("");
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { password: "", confirmation: "" } });
   async function submit(values: Values) {
     setError("");
-    const response = await fetch("/api/account/password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password: values.password }),
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) return setError(result.error ?? "La mise à jour a échoué. Le lien peut avoir expiré ; demandez-en un nouveau.");
-    router.replace("/espace-membre");
-    router.refresh();
+    try {
+      const response = await fetch("/api/account/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ password: values.password, next: searchParams.get("next") ?? undefined }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) return setError(result.error ?? "La mise à jour a échoué. Demandez un nouveau lien de récupération si le lien a expiré.");
+      router.replace(typeof result.redirectTo === "string" ? result.redirectTo : "/espace-membre");
+      router.refresh();
+    } catch {
+      setError("La connexion au service a échoué. Vérifiez votre réseau puis réessayez.");
+    }
   }
-  return <div className="auth-card"><div className="auth-card-mark"><KeyRound size={19} /></div><div className="eyebrow eyebrow-green">SÉCURITÉ DU COMPTE</div><h1>Choisissez un nouveau mot de passe.</h1><p>Un mot de passe long aide à protéger votre compte ADEIO.</p><form className="form-stack" onSubmit={form.handleSubmit(submit)}><label htmlFor="new-password">Nouveau mot de passe</label><input id="new-password" className="form-input" type="password" autoComplete="new-password" {...form.register("password")} />{form.formState.errors.password && <span className="field-error">{form.formState.errors.password.message}</span>}<label htmlFor="confirm-password">Confirmer le mot de passe</label><input id="confirm-password" className="form-input" type="password" autoComplete="new-password" {...form.register("confirmation")} />{form.formState.errors.confirmation && <span className="field-error">{form.formState.errors.confirmation.message}</span>}{error && <div role="alert" className="form-alert error-alert">{error}</div>}<Button type="submit" className="form-submit" size="lg" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting ? "Enregistrement…" : "Mettre à jour"}<ArrowRight size={17} /></Button></form></div>;
+  return <div className="auth-card"><div className="auth-card-mark"><KeyRound size={19} /></div><div className="eyebrow eyebrow-green">SÉCURITÉ DU COMPTE</div><h1>Choisissez un nouveau mot de passe.</h1><p>Définissez un mot de passe d’au moins 10 caractères pour activer votre espace. Vous serez ensuite redirigé vers votre destination ADEIO.</p><form className="form-stack" onSubmit={form.handleSubmit(submit)}><label htmlFor="new-password">Nouveau mot de passe</label><input id="new-password" className="form-input" type="password" autoComplete="new-password" aria-invalid={Boolean(form.formState.errors.password)} aria-describedby={form.formState.errors.password ? "new-password-error" : undefined} {...form.register("password")} />{form.formState.errors.password && <span id="new-password-error" className="field-error" role="alert">{form.formState.errors.password.message}</span>}<label htmlFor="confirm-password">Confirmer le mot de passe</label><input id="confirm-password" className="form-input" type="password" autoComplete="new-password" aria-invalid={Boolean(form.formState.errors.confirmation)} aria-describedby={form.formState.errors.confirmation ? "confirm-password-error" : undefined} {...form.register("confirmation")} />{form.formState.errors.confirmation && <span id="confirm-password-error" className="field-error" role="alert">{form.formState.errors.confirmation.message}</span>}{error && <div role="alert" className="form-alert error-alert">{error}<p><Link href="/connexion?recovery=1" className="text-link">Demander un nouveau lien de récupération</Link></p></div>}<Button type="submit" className="form-submit" size="lg" disabled={form.formState.isSubmitting}>{form.formState.isSubmitting ? "Enregistrement…" : "Mettre à jour"}<ArrowRight size={17} /></Button></form><p className="auth-security">Vous ne reconnaissez pas cette demande ? <Link href="/connexion">Retour à la connexion</Link></p></div>;
 }
