@@ -46,14 +46,14 @@ end;
 $$;
 
 create or replace function public.verify_member_qr(p_token text)
-returns table(member_number text, full_name text, status text, position text, photo_path text)
+returns table(member_number text, full_name text, status text, "position" text, photo_path text)
 language sql stable security definer
 set search_path = public, extensions
 as $$
   select m.member_number,
          concat_ws(' ', m.first_name, m.last_name) as full_name,
          case m.status when 'active' then 'actif' when 'former' then 'ancien' else 'non_actif' end as status,
-         ep.title as position,
+         ep.title as "position",
          case when m.photo_public_consent then m.photo_path else null end as photo_path
   from public.member_qr_tokens q
   join public.members m on m.id = q.member_id
