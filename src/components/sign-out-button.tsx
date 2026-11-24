@@ -12,5 +12,5 @@ export function SignOutButton() {
     router.replace("/");
     router.refresh();
   }
-  return <button type="button" onClick={signOut} className="sign-out-button"><LogOut size={16} /> Se déconnecter</button>;
+  return <button type="button" onClick={signOut} className="sign-out-button" title="Se déconnecter" aria-label="Se déconnecter"><LogOut size={18} aria-hidden="true" /><span className="sign-out-label">Se déconnecter</span></button>;
 }

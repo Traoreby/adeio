@@ -85,16 +85,16 @@ export function SiteHeader({ initialSession }: { initialSession: HeaderSession |
           <span className="brand-copy"><strong>ADEIO</strong><small>Étudiants Ivoiriens de l’Odisha</small></span>
         </Link>
         <nav className="desktop-nav" aria-label="Navigation principale">
-          {links.map((link) => <Link href={link.href} key={link.href} aria-current={isActive(link.href) ? "page" : undefined}>{link.label}</Link>)}
-          {session ? session.rolesReady ? <div className="header-session"><Button asChild size="sm" variant="outline"><Link href={workspaceHref}><span className="header-avatar" aria-hidden="true">{session.displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "A"}</span>{workspaceLabel} <ArrowUpRight size={14} /></Link></Button><SignOutButton /></div> : <span className="header-session-pending" role="status">Chargement de votre espace…</span> : <Button asChild size="sm" variant="outline"><Link href="/connexion">Espace membre <ArrowUpRight size={14} /></Link></Button>}
+          {links.map((link) => <Link href={link.href} prefetch="auto" key={link.href} aria-current={isActive(link.href) ? "page" : undefined}>{link.label}</Link>)}
+          {session ? session.rolesReady ? <div className="header-session"><Button asChild size="sm" variant="outline"><Link href={workspaceHref} prefetch="auto"><span className="header-avatar" aria-hidden="true">{session.displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "A"}</span>{workspaceLabel} <ArrowUpRight size={14} /></Link></Button><SignOutButton /></div> : <span className="header-session-pending" role="status">Chargement de votre espace…</span> : <Button asChild size="sm" variant="outline"><Link href="/connexion" prefetch="auto">Espace membre <ArrowUpRight size={14} /></Link></Button>}
         </nav>
         <div className="mobile-nav">
           <button className="mobile-menu-toggle" type="button" aria-label={isMenuOpen ? "Fermer le menu" : "Ouvrir le menu"} aria-expanded={isMenuOpen} aria-controls="mobile-navigation" onClick={() => setIsMenuOpen((open) => !open)}>
             {isMenuOpen ? <X size={21} /> : <Menu size={22} />}
           </button>
           {isMenuOpen && <nav id="mobile-navigation" aria-label="Navigation mobile">
-            {links.map((link) => <Link href={link.href} key={link.href} aria-current={isActive(link.href) ? "page" : undefined} onClick={() => setIsMenuOpen(false)}>{link.label}</Link>)}
-            {session ? session.rolesReady ? <><Link className="mobile-member-link" href={workspaceHref} onClick={() => setIsMenuOpen(false)}><span className="header-avatar" aria-hidden="true">{session.displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "A"}</span>{workspaceLabel} ({session.displayName}) <ArrowUpRight size={16} /></Link><SignOutButton /></> : <span className="header-session-pending" role="status">Chargement de votre espace…</span> : <Link className="mobile-member-link" href="/connexion" onClick={() => setIsMenuOpen(false)}>Espace membre <ArrowUpRight size={16} /></Link>}
+            {links.map((link) => <Link href={link.href} prefetch="auto" key={link.href} aria-current={isActive(link.href) ? "page" : undefined} onClick={() => setIsMenuOpen(false)}>{link.label}</Link>)}
+            {session ? session.rolesReady ? <><Link className="mobile-member-link" href={workspaceHref} prefetch="auto" onClick={() => setIsMenuOpen(false)}><span className="header-avatar" aria-hidden="true">{session.displayName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]?.toUpperCase()).join("") || "A"}</span>{workspaceLabel} ({session.displayName}) <ArrowUpRight size={16} /></Link><SignOutButton /></> : <span className="header-session-pending" role="status">Chargement de votre espace…</span> : <Link className="mobile-member-link" href="/connexion" prefetch="auto" onClick={() => setIsMenuOpen(false)}>Espace membre <ArrowUpRight size={16} /></Link>}
           </nav>
           }
         </div>

@@ -5,20 +5,25 @@ import { contributionPeriodicityLabel, formatFcfa, formatFinancialDate } from "@
 import { generateContributionDuesAction, recordContributionPaymentAction } from "@/app/gestion-financiere/actions";
 import { ContributionPlanForm } from "@/components/contribution-plan-form";
 import { FinanceSubmitButton } from "@/components/finance-submit-button";
+import { PaginationLinks } from "@/components/pagination-links";
 
-type Props = { searchParams: Promise<{ statut?: string; erreur?: string }> };
+type Props = { searchParams: Promise<{ statut?: string; erreur?: string; page?: string }> };
+type OverdueMember = { member_id: string; member_number: string; first_name: string; last_name: string; overdue_periods: number; oldest_due_on: string; overdue_amount_fcfa: number; total_count: number };
 
 export default async function FinanceContributionsPage({ searchParams }: Props) {
   const [{ supabase, roles }, params] = await Promise.all([getSignedInUser(), searchParams]);
   if (!supabase) return null;
   const today = new Date().toISOString().slice(0, 10);
+  const arrearsPage = Math.max(1, Math.min(10000, Number.parseInt(params.page ?? "1", 10) || 1));
+  const arrearsPageSize = 50;
   const [{ data: plans }, { data: members }, { data: overdue }, { data: payments }] = await Promise.all([
-    supabase.from("contribution_plans").select("id,name,amount_fcfa,periodicity,custom_period_days,starts_on,ends_on,is_active").order("created_at", { ascending: false }),
+    supabase.from("contribution_plans").select("id,name,amount_fcfa,periodicity,custom_period_days,starts_on,ends_on,is_active").order("created_at", { ascending: false }).limit(50),
     supabase.from("members").select("id,member_number,first_name,last_name").eq("status", "active").order("last_name").order("first_name").limit(500),
-    supabase.from("contribution_dues").select("id,member_id,due_on,period_start,period_end,amount_due_fcfa,members(member_number,first_name,last_name),contribution_allocations(amount_fcfa)").lte("due_on", today).order("due_on").limit(200),
+    supabase.rpc("get_finance_overdue_page", { p_as_of: today, p_limit: arrearsPageSize, p_offset: (arrearsPage - 1) * arrearsPageSize }),
     supabase.from("contribution_payments").select("id,member_id,paid_on,amount_fcfa,payment_method,note,members(member_number,first_name,last_name)").order("paid_on", { ascending: false }).limit(10),
   ]);
-  const outstanding = (overdue ?? []).map((due) => ({ ...due, remaining: due.amount_due_fcfa - (due.contribution_allocations ?? []).reduce((sum, allocation) => sum + allocation.amount_fcfa, 0) })).filter((due) => due.remaining > 0);
+  const overdueMembers = (overdue ?? []) as OverdueMember[];
+  const overdueCount = overdueMembers[0]?.total_count ?? 0;
   const alerts: Record<string, string> = {
     "plan-invalide": "Vérifiez le nom, le montant, la périodicité et les dates du plan.",
     "generation-impossible": "Les échéances n’ont pas pu être générées. Vérifiez que le plan est actif.",
@@ -36,7 +41,7 @@ export default async function FinanceContributionsPage({ searchParams }: Props) 
       <div className="admin-form-grid"><div><label htmlFor="payment-date">Date du paiement</label><input id="payment-date" name="paid_on" type="date" required defaultValue={today} /></div><div><label htmlFor="payment-amount">Montant versé (FCFA)</label><input id="payment-amount" name="amount_fcfa" type="number" min="1" step="1" max="1000000000000" required placeholder="Ex. 5 000" /></div></div>
       <div className="admin-form-grid"><div><label htmlFor="payment-method">Moyen de paiement</label><select id="payment-method" name="payment_method" defaultValue="cash"><option value="cash">Espèces</option><option value="mobile_money">Mobile money</option><option value="bank_transfer">Virement</option><option value="other">Autre</option></select></div><div><label htmlFor="payment-note">Référence ou note (facultatif)</label><input id="payment-note" name="note" maxLength={500} /></div></div><FinanceSubmitButton pendingLabel="Enregistrement…">Enregistrer le paiement</FinanceSubmitButton>
     </form> : <div className="admin-empty">Aucun membre actif. Ajoutez d’abord des fiches dans Administration → Membres.{roles.some((role) => role === "admin" || role === "super_admin") ? <> <Link href="/admin/membres" className="text-link">Ajouter des membres <ArrowRight size={14} /></Link></> : <span> Demandez à un administrateur de les ajouter.</span>}</div>}</div>
-    <div className="admin-card"><div className="admin-card-heading"><div><h2>Échéances échues non réglées</h2><p>Affichage limité aux 200 périodes les plus anciennes ; l’export détaille la liste complète par filtres.</p></div><a href="/api/finances/arrears" className="text-link">Exporter CSV <ArrowRight size={14} /></a></div><div className="member-table-scroll"><table className="member-table"><thead><tr><th>Membre</th><th>Échéance</th><th>Période</th><th>Montant dû</th><th>Reste à payer</th></tr></thead><tbody>{outstanding.map((due) => <tr key={due.id}><td>{due.members?.[0]?.member_number} · {due.members?.[0]?.first_name} {due.members?.[0]?.last_name}</td><td>{formatFinancialDate(due.due_on)}</td><td>{formatFinancialDate(due.period_start)} – {formatFinancialDate(due.period_end)}</td><td>{formatFcfa(due.amount_due_fcfa)}</td><td className="finance-amount">{formatFcfa(due.remaining)}</td></tr>)}</tbody></table></div>{!outstanding.length && <div className="admin-empty">Aucune échéance échue ne reste impayée.</div>}</div>
+    <div className="admin-card"><div className="admin-card-heading"><div><h2>Échéances échues non réglées</h2><p>{overdueCount} membre(s) en retard · {arrearsPageSize} lignes maximum par page, montants agrégés par la base.</p></div><a href="/api/finances/arrears" className="text-link">Exporter CSV <ArrowRight size={14} /></a></div><div className="member-table-scroll"><table className="member-table"><thead><tr><th>Membre</th><th>Périodes impayées</th><th>Plus ancienne échéance</th><th>Montant restant</th></tr></thead><tbody>{overdueMembers.map((member) => <tr key={member.member_id}><td>{member.member_number} · {member.first_name} {member.last_name}</td><td>{member.overdue_periods}</td><td>{formatFinancialDate(member.oldest_due_on)}</td><td className="finance-amount">{formatFcfa(member.overdue_amount_fcfa)}</td></tr>)}</tbody></table></div>{!overdueCount && <div className="admin-empty">Aucun membre n’a d’échéance échue impayée.</div>}<PaginationLinks pathname="/gestion-financiere/cotisations" page={arrearsPage} hasNext={overdueCount > arrearsPage * arrearsPageSize} /></div>
     <div className="admin-card"><div className="admin-card-heading"><div><h2><Banknote size={16} /> Paiements récents</h2><p>Les reçus individuels ne sont pas affichés dans les finances générales des membres.</p></div><Link href="/gestion-financiere/operations" className="text-link">Voir les opérations <ArrowRight size={14} /></Link></div><div className="admin-list">{payments?.map((payment) => <div className="admin-list-row" key={payment.id}><div><h3>{payment.members?.[0]?.member_number} · {payment.members?.[0]?.first_name} {payment.members?.[0]?.last_name}</h3><p>{formatFinancialDate(payment.paid_on)} · {payment.note || "Cotisation enregistrée"}</p></div><strong>{formatFcfa(payment.amount_fcfa)}</strong></div>)}{!payments?.length && <p className="admin-empty">Aucun paiement enregistré.</p>}</div></div>
   </>;
 }

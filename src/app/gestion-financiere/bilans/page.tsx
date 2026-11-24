@@ -3,17 +3,23 @@ import { getSignedInUser } from "@/lib/auth";
 import { publishFinancialReportAction } from "@/app/gestion-financiere/actions";
 import { formatFinancialDate } from "@/lib/finance";
 import { FinanceSubmitButton } from "@/components/finance-submit-button";
+import { PaginationLinks } from "@/components/pagination-links";
 
-type Props = { searchParams: Promise<{ statut?: string; erreur?: string }> };
+type Props = { searchParams: Promise<{ statut?: string; erreur?: string; page?: string }> };
 
 export default async function FinanceReportsPage({ searchParams }: Props) {
   const [{ supabase }, params] = await Promise.all([getSignedInUser(), searchParams]);
   if (!supabase) return null;
-  const { data: reports } = await supabase.from("financial_reports").select("id,title,period_start,period_end,summary,storage_path,file_name,published_at").order("period_end", { ascending: false }).limit(100);
-  const reportCards = await Promise.all((reports ?? []).map(async (report) => {
-    const { data } = await supabase.storage.from("financial-reports").createSignedUrl(report.storage_path, 60 * 20, { download: report.file_name });
-    return { ...report, url: data?.signedUrl ?? null };
-  }));
+  const page = Math.max(1, Math.min(10000, Number.parseInt(params.page ?? "1", 10) || 1));
+  const pageSize = 20;
+  const { data: reportRows } = await supabase.from("financial_reports").select("id,title,period_start,period_end,summary,storage_path,file_name,published_at").order("period_end", { ascending: false }).order("id", { ascending: false }).range((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+  const reports = (reportRows ?? []).slice(0, pageSize);
+  const reportPaths = reports.map((report) => report.storage_path);
+  const { data: signedReports } = reportPaths.length
+    ? await supabase.storage.from("financial-reports").createSignedUrls(reportPaths, 60 * 20, { download: true })
+    : { data: [] };
+  const signedUrlByPath = new Map((signedReports ?? []).map((report) => [report.path, report.signedUrl]));
+  const reportCards = reports.map((report) => ({ ...report, url: signedUrlByPath.get(report.storage_path) ?? null }));
   return <>
     <div className="admin-page-heading"><div><div className="eyebrow eyebrow-green">TRANSPARENCE FINANCIÈRE</div><h1>Bilans financiers</h1><p>Les rapports périodiques officiels : résumez une période (recettes, dépenses, solde) et publiez-la aux membres.</p></div><span className="admin-heading-mark"><FileBarChart2 size={20} /></span></div>
     {params.statut === "bilan-publie" && <div role="status" className="form-success finance-alert">Bilan publié ; les membres connectés peuvent maintenant le télécharger.</div>}
@@ -26,6 +32,6 @@ export default async function FinanceReportsPage({ searchParams }: Props) {
       <div><label htmlFor="report-pdf">Fichier PDF</label><input id="report-pdf" name="report_pdf" type="file" accept="application/pdf" required /><small>PDF uniquement · taille maximum 10 Mo · accès réservé aux membres et rôles financiers.</small></div>
       <FinanceSubmitButton pendingLabel="Publication du bilan…">Publier le bilan</FinanceSubmitButton>
     </form></div>
-    <div className="admin-card"><h2><FileText size={16} /> Rapports publiés</h2><div className="admin-list">{reportCards.map((report) => <div className="admin-list-row" key={report.id}><div><h3>{report.title}</h3><p>{formatFinancialDate(report.period_start)} – {formatFinancialDate(report.period_end)}{report.summary ? ` · ${report.summary}` : ""}</p></div>{report.url ? <a className="text-link" href={report.url} target="_blank" rel="noreferrer">Télécharger PDF</a> : <span className="status-chip draft">Lien temporairement indisponible</span>}</div>)}{!reportCards.length && <p className="admin-empty">Aucun bilan publié.</p>}</div></div>
+    <div className="admin-card"><h2><FileText size={16} /> Rapports publiés</h2><p>Page {page} · {reportCards.length} rapport(s) affiché(s).</p><div className="admin-list">{reportCards.map((report) => <div className="admin-list-row" key={report.id}><div><h3>{report.title}</h3><p>{formatFinancialDate(report.period_start)} – {formatFinancialDate(report.period_end)}{report.summary ? ` · ${report.summary}` : ""}</p></div>{report.url ? <a className="text-link" href={report.url} target="_blank" rel="noreferrer">Télécharger PDF</a> : <span className="status-chip draft">Lien temporairement indisponible</span>}</div>)}{!reportCards.length && <p className="admin-empty">Aucun bilan publié.</p>}</div><PaginationLinks pathname="/gestion-financiere/bilans" page={page} hasNext={(reportRows?.length ?? 0) > pageSize} /></div>
   </>;
 }

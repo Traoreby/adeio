@@ -39,8 +39,9 @@ export function ActiveSidebarNav({ kind, roles }: { kind: "admin" | "finance"; r
 
   return <nav className="admin-nav" aria-label={kind === "finance" ? "Navigation financière" : "Navigation administration"}>
     {visibleItems.map(({ href, label, icon: Icon }) => {
-      const active = pathname === href || (href !== "/admin" && pathname.startsWith(`${href}/`));
-      return <Link href={href} key={href} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
+      const exactOnly = href === "/admin" || href === "/gestion-financiere";
+      const active = pathname === href || (!exactOnly && pathname.startsWith(`${href}/`));
+      return <Link href={href} prefetch="auto" key={href} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
         <Icon size={18} aria-hidden="true" /><span>{label}</span>
       </Link>;
     })}

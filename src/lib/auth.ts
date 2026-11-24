@@ -50,6 +50,17 @@ export const getSignedInUser = cache(async function getSignedInUser() {
   };
 });
 
+export const getSignedInProfile = cache(async function getSignedInProfile() {
+  const signedIn = await getSignedInUser();
+  if (!signedIn.supabase || !signedIn.user) return { ...signedIn, profile: null };
+  const { data: profile } = await signedIn.supabase
+    .from("profiles")
+    .select("must_change_password,mfa_enabled")
+    .eq("user_id", signedIn.user.id)
+    .maybeSingle();
+  return { ...signedIn, profile };
+});
+
 export async function requireAdmin() {
   const { supabase, user, roles } = await getSignedInUser();
   if (!supabase) return { supabase: null, user: null, roles: [] as AppRole[] };

@@ -7,20 +7,17 @@ import { FinanceSubmitButton } from "@/components/finance-submit-button";
 type Props = { searchParams: Promise<{ periode?: string }> };
 
 export default async function FinanceDashboardPage({ searchParams }: Props) {
-  const { supabase } = await getSignedInUser();
+  const [{ supabase }, params] = await Promise.all([getSignedInUser(), searchParams]);
   if (!supabase) return null;
-  const params = await searchParams;
   const period = ["month", "quarter", "year"].includes(params.periode ?? "") ? params.periode! : "all";
   const { from, to } = currentFinancialPeriod(period);
-  const [{ data: summaryRows }, { data: recent }] = await Promise.all([
+  const [{ data: summaryRows }, { data: recent }, { data: arrearsRows }, { count: memberCount }] = await Promise.all([
     supabase.rpc("get_financial_summary", { p_from: from, p_to: to }),
     (() => { let query = supabase.from("financial_transactions").select("id,occurred_on,direction,label,amount_fcfa,payment_method,transaction_categories(name)").eq("is_published", true).order("occurred_on", { ascending: false }).limit(8); if (from) query = query.gte("occurred_on", from); if (to) query = query.lte("occurred_on", to); return query; })(),
-  ]);
-  const summary = summaryRows?.[0];
-  const [{ data: arrearsRows }, { count: memberCount }] = await Promise.all([
     supabase.rpc("get_finance_overdue_summary", { p_as_of: new Date().toISOString().slice(0, 10) }),
     supabase.from("members").select("id", { count: "exact", head: true }).eq("status", "active"),
   ]);
+  const summary = summaryRows?.[0];
   const arrears = arrearsRows?.[0];
   return <>
     <div className="admin-page-heading"><div><div className="eyebrow eyebrow-green">TRÉSORERIE ADEIO</div><h1>Vue financière</h1><p>Vue d’ensemble : solde de la caisse, recettes, dépenses et résultat net.</p></div><Link href="/gestion-financiere/operations/nouvelle" className="admin-submit"><Plus size={18} /> Nouvelle opération</Link></div>
