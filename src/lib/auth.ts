@@ -13,13 +13,14 @@ const getUserRoles = cache(async (userId: string) => {
 
 export const getHeaderSession = cache(async function getHeaderSession() {
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { user: null };
+  if (!supabase) return { user: null, roles: [] as AppRole[] };
 
   // This session snapshot is only used to render the header. Protected data and
   // routes still verify the user with getUser() and database RLS.
   const { data: { session } } = await supabase.auth.getSession();
   const user = session?.user ?? null;
-  return { user };
+  const roles = user ? await getUserRoles(user.id) : [];
+  return { user, roles };
 });
 
 export async function hasRequiredMfa(

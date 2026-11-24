@@ -11,6 +11,7 @@ export default async function MemberHomePage() {
   const { supabase, user, roles } = await getSignedInUser();
   if (!supabase) return <section className="section-pad"><div className="container empty-state"><h1>Espace membre à configurer</h1><p>Le projet Supabase doit être raccordé avant l’activation des comptes.</p></div></section>;
   if (!user) redirect("/connexion?next=/espace-membre");
+  if (roles.includes("admin") || roles.includes("super_admin")) redirect("/admin");
   const [{ data: profile }, { data: memberAnnouncements }] = await Promise.all([
     supabase.from("profiles").select("display_name,must_change_password").eq("user_id", user.id).maybeSingle(),
     supabase.rpc("get_visible_announcements", { p_limit: 20 }),

@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const { user } = await getHeaderSession();
+  const { user, roles } = await getHeaderSession();
   const displayName = typeof user?.user_metadata?.display_name === "string"
     ? user.user_metadata.display_name
     : user?.email?.split("@")[0] ?? "";
@@ -23,12 +23,14 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     id: user.id,
     displayName,
     email: user.email ?? "",
+    isAdmin: roles.some((role) => role === "admin" || role === "super_admin"),
+    rolesReady: true,
   } : null;
   return (
     <html lang="fr">
       <body>
         <MotionEffects />
-        <SiteHeader initialSession={headerSession} />
+        <SiteHeader key={headerSession ? `${headerSession.id}:${headerSession.email}:${headerSession.displayName}:${headerSession.isAdmin}` : "anonymous"} initialSession={headerSession} />
         <main>{children}</main>
         <SiteFooter />
       </body>

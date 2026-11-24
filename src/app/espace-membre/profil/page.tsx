@@ -10,9 +10,10 @@ import Image from "next/image";
 export const metadata: Metadata = { title: "Mon profil · ADEIO" };
 
 export default async function MyMemberProfilePage() {
-  const { supabase, user } = await getSignedInUser();
+  const { supabase, user, roles } = await getSignedInUser();
   if (!supabase) return <section className="section-pad"><div className="container empty-state"><h1>Profil indisponible</h1><p>Connectez le projet Supabase pour consulter votre fiche membre.</p></div></section>;
   if (!user) redirect("/connexion?next=%2Fespace-membre%2Fprofil");
+  if (roles.includes("admin") || roles.includes("super_admin")) redirect("/admin");
   const { data: member } = await supabase.from("members").select("id,member_number,first_name,last_name,joined_year,status,photo_path,photo_public_consent").eq("user_id", user.id).maybeSingle();
   if (!member) return <section className="member-space-page section-pad"><div className="container"><div className="member-space-empty"><h1>Aucune fiche membre associée</h1><p>Demandez à l’administration ADEIO de lier votre compte à votre fiche.</p><Link href="/espace-membre" className="text-link"><ArrowLeft size={15} /> Retour à mon espace</Link></div></div></section>;
   const [{ data: details }, { data: periods }] = await Promise.all([

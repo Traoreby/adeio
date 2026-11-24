@@ -39,6 +39,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .header-inner { height: 82px; display: flex; align-items: center; justify-content: space-between; }
 .header-session { display: flex; align-items: center; gap: 8px; }
 .header-session > .sign-out-button { padding: 9px 11px; font-size: 13px; }
+.header-session-pending { display: inline-flex; min-width: 132px; min-height: 38px; align-items: center; justify-content: center; color: #46534b; font-size: 13px; }
 .header-avatar { display: inline-grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: #e8f4ec; color: var(--adeio-green-text); font-size: 10px; font-weight: 800; }
 .brand { display: inline-flex; align-items: center; gap: 10px; min-width: 160px; }
 .brand-image { width: 48px; height: 48px; display: grid; overflow: hidden; place-items: center; border-radius: 50%; background: #d9edf2; }
@@ -592,6 +593,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
   .header-inner { height: 70px; }
   .header-session { flex-wrap: wrap; }
   .header-session > .sign-out-button { padding: 8px 10px; font-size: 12px; }
+  .header-session-pending { min-width: 0; justify-content: flex-start; }
   .desktop-nav { display: none; }
   .mobile-nav { display: block; }
   .hero-section { padding-top: 55px; }
