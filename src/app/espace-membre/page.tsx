@@ -1,22 +1,202 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowRight, FileText, LockKeyhole, ContactRound, Archive, UserRound, Banknote } from "lucide-react";
+import {
+  Archive,
+  ArrowRight,
+  Banknote,
+  CalendarDays,
+  ContactRound,
+  FileText,
+  LockKeyhole,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 import { getSignedInUser } from "@/lib/auth";
-import { Card, CardContent } from "@/components/ui/card";
+import { memberStatusLabels, type MemberStatus } from "@/lib/members";
+import { getConsentedMemberPhotoUrl } from "@/lib/supabase/service";
 
 export const metadata: Metadata = { title: "Espace membre" };
+
+const sensitiveRoles = ["treasurer", "auditor", "admin", "super_admin"];
+const financialRoles = ["treasurer", "auditor", "super_admin"];
+
+type Announcement = {
+  id: string;
+  title: string;
+  slug: string;
+  published_at: string | null;
+  visibility: string;
+};
+
+function formatAnnouncementDate(date: string | null) {
+  if (!date) return "Date non précisée";
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(new Date(date));
+}
 
 export default async function MemberHomePage() {
   const { supabase, user, roles } = await getSignedInUser();
   if (!supabase) return <section className="section-pad"><div className="container empty-state"><h1>Espace membre à configurer</h1><p>Le projet Supabase doit être raccordé avant l’activation des comptes.</p></div></section>;
   if (!user) redirect("/connexion?next=/espace-membre");
   if (roles.includes("admin") || roles.includes("super_admin")) redirect("/admin");
-  const [{ data: profile }, { data: memberAnnouncements }] = await Promise.all([
-    supabase.from("profiles").select("display_name,must_change_password").eq("user_id", user.id).maybeSingle(),
+
+  const [{ data: profile }, { data: announcements }, { data: member }] = await Promise.all([
+    supabase.from("profiles").select("display_name,must_change_password,mfa_enabled").eq("user_id", user.id).maybeSingle(),
     supabase.rpc("get_visible_announcements", { p_limit: 20 }),
+    supabase.from("members").select("member_number,first_name,last_name,joined_year,status,photo_path,photo_public_consent").eq("user_id", user.id).maybeSingle(),
   ]);
+
   if (profile?.must_change_password) redirect("/mot-de-passe");
-  const memberNotices = (memberAnnouncements ?? []) as { id: string; title: string; slug: string; visibility: string }[];
-  return <section className="member-home section-pad"><div className="container"><div className="member-welcome"><div><div className="eyebrow eyebrow-green">ESPACE MEMBRE</div><h1>Bonjour{profile?.display_name ? `, ${profile.display_name}` : ""}.</h1><p>Bienvenue dans votre espace ADEIO.</p></div></div><div className="member-dashboard-grid"><Card className="member-dashboard-card"><CardContent><span className="pillar-icon"><UserRound size={21} /></span><h2>Mon profil</h2><p>Consultez vos informations et vos périodes de présence à ADEIO.</p><Link href="/espace-membre/profil" className="text-link">Voir ma fiche <ArrowRight size={15} /></Link></CardContent></Card><Card className="member-dashboard-card"><CardContent><span className="pillar-icon"><ContactRound size={21} /></span><h2>Annuaire</h2><p>Retrouvez les membres actuels et leurs numéros ADEIO.</p><Link href="/membres" className="text-link">Consulter l’annuaire <ArrowRight size={15} /></Link></CardContent></Card><Card className="member-dashboard-card"><CardContent><span className="pillar-icon"><Archive size={21} /></span><h2>Archives</h2><p>Consultez les anciennes listes selon les réglages de visibilité.</p><Link href="/archives" className="text-link">Consulter les archives <ArrowRight size={15} /></Link></CardContent></Card><Card className="member-dashboard-card"><CardContent><span className="pillar-icon"><Banknote size={21} /></span><h2>Finances</h2><p>Consultez les opérations générales publiées et vos échéances personnelles.</p><Link href="/finances" className="text-link">Voir les finances <ArrowRight size={15} /></Link><Link href="/espace-membre/cotisations" className="text-link">Mes cotisations <ArrowRight size={15} /></Link></CardContent></Card><Card className="member-dashboard-card"><CardContent><span className="pillar-icon"><FileText size={21} /></span><h2>Informations ADEIO</h2><p>Les pages publiques et les annonces de l’association sont accessibles à tous.</p><Link href="/actualites" className="text-link">Consulter les actualités <ArrowRight size={15} /></Link></CardContent></Card></div><div className="member-announcements"><div className="member-section-heading"><div><div className="eyebrow eyebrow-green">POUR LES MEMBRES</div><h2>Annonces réservées</h2></div><Link href="/actualites" className="text-link">Voir les actualités <ArrowRight size={15} /></Link></div>{memberNotices.filter((item) => item.visibility === "members").length ? memberNotices.filter((item) => item.visibility === "members").map((item) => <Link className="member-announcement-row" href={`/actualites/${item.slug}`} key={item.id}><span>{item.title}</span><ArrowRight size={15} /></Link>) : <p className="member-empty-note">Aucune annonce réservée aux membres pour le moment.</p>}</div>{roles.some((role) => ["treasurer", "auditor", "admin", "super_admin"].includes(role)) && <Link href="/securite" className="admin-shortcut"><LockKeyhole size={16} /> Configurer l’authentification à deux facteurs</Link>}{roles.some((role) => ["treasurer", "auditor", "super_admin"].includes(role)) && <Link href="/gestion-financiere" className="admin-shortcut"><Banknote size={16} /> Ouvrir la gestion financière <ArrowRight size={16} /></Link>}{roles.includes("admin") || roles.includes("super_admin") ? <Link href="/admin" className="admin-shortcut">Ouvrir l’administration <ArrowRight size={16} /></Link> : null}</div></section>;
+
+  const photoUrl = member?.photo_public_consent ? await getConsentedMemberPhotoUrl(member.photo_path) : null;
+  const memberNotices = ((announcements ?? []) as Announcement[])
+    .filter((item) => item.visibility === "members")
+    .slice(0, 3);
+  const isSensitiveRole = roles.some((role) => sensitiveRoles.includes(role));
+  const canManageFinances = roles.some((role) => financialRoles.includes(role));
+  const canManageAdministration = roles.some((role) => ["admin", "super_admin"].includes(role));
+  const memberStatus = member ? memberStatusLabels[member.status as MemberStatus] : null;
+
+  const actions = [
+    {
+      href: "/espace-membre/profil",
+      title: "Mon profil",
+      description: "Consultez votre fiche et vos périodes de présence.",
+      icon: UserRound,
+    },
+    {
+      href: "/membres",
+      title: "Annuaire des membres",
+      description: "Retrouvez les membres actuels de la communauté.",
+      icon: ContactRound,
+    },
+    {
+      href: "/archives",
+      title: "Archives",
+      description: "Consultez les anciennes listes de membres.",
+      icon: Archive,
+    },
+    {
+      href: "/finances",
+      title: "Finances de l’association",
+      description: "Consultez les opérations générales et les bilans publiés.",
+      icon: Banknote,
+    },
+    {
+      href: "/espace-membre/cotisations",
+      title: "Mes cotisations",
+      description: "Suivez vos paiements et votre situation personnelle.",
+      icon: CalendarDays,
+    },
+    {
+      href: "/documents",
+      title: "Documents officiels",
+      description: "Accédez aux documents partagés avec les membres.",
+      icon: FileText,
+    },
+    ...(canManageFinances ? [{
+      href: "/gestion-financiere",
+      title: "Gestion financière",
+      description: "Enregistrez les opérations et suivez les cotisations.",
+      icon: Banknote,
+    }] : []),
+    ...(canManageAdministration ? [{
+      href: "/admin",
+      title: "Administration",
+      description: "Gérez les membres, les contenus et les paramètres ADEIO.",
+      icon: LockKeyhole,
+    }] : []),
+  ];
+
+  return (
+    <section className="member-home section-pad">
+      <div className="container member-home-content">
+        <header className="member-welcome">
+          <div>
+            <div className="eyebrow eyebrow-green">ESPACE MEMBRE</div>
+            <h1>Bonjour{profile?.display_name ? `, ${profile.display_name}` : ""}.</h1>
+            <p>Bienvenue dans votre espace ADEIO.</p>
+          </div>
+        </header>
+
+        <section className="member-home-card member-home-membership" aria-labelledby="member-card-title">
+          <div className="member-home-member-avatar">
+            {photoUrl ? (
+              <Image src={photoUrl} alt={`Photo de ${member?.first_name} ${member?.last_name}`} fill sizes="72px" />
+            ) : (
+              <UserRound size={30} aria-hidden="true" />
+            )}
+          </div>
+          <div className="member-home-member-info">
+            <div className="eyebrow eyebrow-green">MA CARTE DE MEMBRE</div>
+            <h2 id="member-card-title">{member ? `${member.first_name} ${member.last_name}` : "Fiche membre"}</h2>
+            {member ? (
+              <div className="member-home-member-meta">
+                <span className="member-home-number">{member.member_number}</span>
+                <span className={`member-home-status ${member.status === "active" ? "is-active" : ""}`}>{memberStatus}</span>
+                <span>Adhésion {member.joined_year}</span>
+              </div>
+            ) : (
+              <p className="member-home-no-card">Aucune fiche membre n’est encore associée à ce compte. Contactez l’administration ADEIO.</p>
+            )}
+          </div>
+          {member && <Link href="/espace-membre/profil" className="member-home-card-link">Voir ma fiche <ArrowRight size={17} /></Link>}
+        </section>
+
+        <section aria-labelledby="member-actions-title" className="member-home-actions-section">
+          <div className="member-home-section-title">
+            <div className="eyebrow eyebrow-green">ACCÈS RAPIDES</div>
+            <h2 id="member-actions-title">Que souhaitez-vous consulter ?</h2>
+          </div>
+          <div className="member-action-grid">
+            {actions.map(({ href, title, description, icon: Icon }) => (
+              <Link className="member-action-card" href={href} key={href}>
+                <span className="member-action-icon"><Icon size={21} aria-hidden="true" /></span>
+                <span className="member-action-copy"><strong>{title}</strong><span>{description}</span></span>
+                <ArrowRight className="member-action-arrow" size={19} aria-hidden="true" />
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="member-announcements" aria-labelledby="member-announcements-title">
+          <div className="member-section-heading">
+            <div>
+              <div className="eyebrow eyebrow-green">POUR LES MEMBRES</div>
+              <h2 id="member-announcements-title">Annonces réservées</h2>
+            </div>
+            <Link href="/actualites" className="member-announcements-button">Voir les actualités <ArrowRight size={16} /></Link>
+          </div>
+          {memberNotices.length ? (
+            <>
+              <div className="member-announcement-list">
+                {memberNotices.map((item) => (
+                  <Link className="member-announcement-row" href={`/actualites/${item.slug}`} key={item.id}>
+                    <span className="member-announcement-copy"><time dateTime={item.published_at ?? undefined}>{formatAnnouncementDate(item.published_at)}</time><strong>{item.title}</strong></span>
+                    <ArrowRight size={18} aria-hidden="true" />
+                  </Link>
+                ))}
+              </div>
+              <Link href="/actualites" className="member-announcements-all">Voir toutes les actualités <ArrowRight size={15} /></Link>
+            </>
+          ) : (
+            <p className="member-empty-note">Aucune annonce réservée aux membres pour le moment. Revenez consulter cette page pour connaître les prochaines nouvelles de l’association.</p>
+          )}
+        </section>
+
+        {isSensitiveRole && (
+          <section className="member-security-card" aria-labelledby="member-security-title">
+            <span className="member-action-icon member-security-icon"><ShieldCheck size={22} aria-hidden="true" /></span>
+            <div className="member-security-copy">
+              <div className="eyebrow eyebrow-green">SÉCURITÉ DU COMPTE</div>
+              <h2 id="member-security-title">Authentification à deux facteurs</h2>
+              <p>État : <strong>{profile?.mfa_enabled ? "Activée" : "Non activée"}</strong>. {profile?.mfa_enabled ? "Votre compte bénéficie d’une vérification supplémentaire." : "Nous vous recommandons de l’activer pour protéger les accès sensibles de votre rôle."}</p>
+            </div>
+            <Link href="/securite" className="member-security-link">{profile?.mfa_enabled ? "Gérer la sécurité" : "Configurer la protection"}<ArrowRight size={17} /></Link>
+          </section>
+        )}
+      </div>
+    </section>
+  );
 }
