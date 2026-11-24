@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, FilePlus2 } from "lucide-react";
 import { getSignedInUser } from "@/lib/auth";
 import { createFinancialTransactionAction } from "@/app/gestion-financiere/actions";
+import { FinanceSubmitButton } from "@/components/finance-submit-button";
 
 type Props = { searchParams: Promise<{ erreur?: string }> };
 
@@ -32,7 +33,7 @@ export default async function NewFinancialTransactionPage({ searchParams }: Prop
       <div><label htmlFor="correction_of">Écriture corrigée (facultatif)</label><select id="correction_of" name="correction_of" defaultValue=""><option value="">Aucune, écriture normale</option>{recentTransactions?.map((transaction) => <option key={transaction.id} value={transaction.id}>{transaction.occurred_on} · {transaction.direction === "income" ? "Recette" : "Dépense"} · {transaction.label} · {transaction.amount_fcfa.toLocaleString("fr-FR")} FCFA</option>)}</select><small>Pour rectifier une publication, choisissez l’écriture d’origine et saisissez le sens opposé.</small></div>
       <div><label htmlFor="attachment">Justificatif (facultatif)</label><input id="attachment" name="attachment" type="file" accept="application/pdf,image/jpeg,image/png" /><small>PDF, JPG ou PNG · 10 Mo maximum · fichier stocké en privé.</small></div>
       <div className="admin-banner">Après validation, l’écriture sera immédiatement visible aux membres. Les corrections et annulations se font par une nouvelle écriture tracée.</div>
-      <button className="admin-submit" type="submit">Publier l’opération</button>
+      <FinanceSubmitButton pendingLabel="Publication…">Publier l’opération</FinanceSubmitButton>
     </form></div>
   </>;
 }
