@@ -43,7 +43,15 @@ export async function POST(request: NextRequest) {
   }
 
   const { error: passwordError } = await supabase.auth.updateUser({ password: parsed.data.password });
-  if (passwordError) return NextResponse.json({ error: "Le mot de passe n’a pas pu être modifié." }, { status: 400 });
+  if (passwordError) {
+    const errorCode = "code" in passwordError ? passwordError.code : "";
+    const message = errorCode === "same_password"
+      ? "Choisissez un mot de passe différent de celui que vous utilisez actuellement."
+      : errorCode === "weak_password"
+        ? "Choisissez un mot de passe plus robuste, d’au moins 10 caractères."
+        : "Le mot de passe n’a pas pu être modifié. Réessayez ou demandez un nouveau lien si votre session a expiré.";
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
   const { error: profileError } = await serviceClient.from("profiles").update({ must_change_password: false }).eq("user_id", user.id);
   if (profileError) return NextResponse.json({ error: "Le mot de passe a été mis à jour, mais la finalisation du compte a échoué. Réessayez ou contactez l’administration." }, { status: 503 });
