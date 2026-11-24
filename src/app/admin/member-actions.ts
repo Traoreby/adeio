@@ -28,7 +28,7 @@ async function adminContext(nextPath: string) {
   if (!supabase || !user) redirect(`/connexion?next=${encodeURIComponent(nextPath)}`);
   if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
   if (!await hasRequiredMfa(supabase, user.id)) redirect(`/auth/mfa?next=${encodeURIComponent(nextPath)}`);
-  return { supabase, user };
+  return { supabase, user, roles };
 }
 
 function parseMember(formData: FormData) {
@@ -43,6 +43,15 @@ function parseMember(formData: FormData) {
     userId: value(formData, "user_id"),
     photoConsent: formData.get("photo_public_consent") === "on",
   });
+}
+
+async function validMemberPhoto(entry: FormDataEntryValue | null) {
+  if (!(entry instanceof File) || entry.size === 0) return null;
+  if (!["image/jpeg", "image/webp"].includes(entry.type) || entry.size > 500_000) return false;
+  const header = new Uint8Array(await entry.slice(0, 12).arrayBuffer());
+  const validJpeg = entry.type === "image/jpeg" && header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+  const validWebp = entry.type === "image/webp" && String.fromCharCode(...header.slice(0, 4)) === "RIFF" && String.fromCharCode(...header.slice(8, 12)) === "WEBP";
+  return validJpeg || validWebp ? entry : false;
 }
 
 async function nextMemberNumber(supabase: NonNullable<Awaited<ReturnType<typeof import("@/lib/supabase/server").createSupabaseServerClient>>>, year: number) {
@@ -86,6 +95,25 @@ export async function createMemberAction(formData: FormData) {
   if (periodError || detailsError) {
     await supabase.from("members").delete().eq("id", member.id);
     redirect("/admin/membres/nouveau?erreur=creation-impossible");
+  }
+  const photo = await validMemberPhoto(formData.get("photo"));
+  if (photo === false) {
+    await supabase.from("members").delete().eq("id", member.id);
+    redirect("/admin/membres/nouveau?erreur=photo-invalide");
+  }
+  if (photo) {
+    const storagePath = `${member.id}/${randomUUID()}.${photo.type === "image/webp" ? "webp" : "jpg"}`;
+    const { error: photoUploadError } = await supabase.storage.from("member-photos").upload(storagePath, photo, { contentType: photo.type, upsert: false });
+    if (photoUploadError) {
+      await supabase.from("members").delete().eq("id", member.id);
+      redirect("/admin/membres/nouveau?erreur=photo-impossible");
+    }
+    const { error: photoLinkError } = await supabase.from("members").update({ photo_path: storagePath }).eq("id", member.id);
+    if (photoLinkError) {
+      await supabase.storage.from("member-photos").remove([storagePath]);
+      await supabase.from("members").delete().eq("id", member.id);
+      redirect("/admin/membres/nouveau?erreur=photo-impossible");
+    }
   }
   revalidatePath("/admin/membres");
   revalidatePath("/admin/archives");
@@ -144,13 +172,14 @@ export async function uploadMemberPhotoAction(formData: FormData) {
   if (!z.string().uuid().safeParse(id).success) redirect("/admin/membres?erreur=membre-introuvable");
   const path = `/admin/membres/${id}`;
   const { supabase } = await adminContext(path);
-  const file = formData.get("photo");
-  if (!(file instanceof File) || !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 850_000) redirect(`${path}?erreur=photo-invalide`);
-  const extension = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
-  const storagePath = `${id}/${randomUUID()}.${extension}`;
-  const { error: uploadError } = await supabase.storage.from("member-photos").upload(storagePath, file, { contentType: file.type, upsert: false });
-  if (uploadError) redirect(`${path}?erreur=photo-impossible`);
+  const photo = await validMemberPhoto(formData.get("photo"));
+  if (!photo) redirect(`${path}?erreur=photo-invalide`);
   const { data: previous } = await supabase.from("members").select("photo_path").eq("id", id).single();
+  if (!previous) redirect(`${path}?erreur=membre-introuvable`);
+  const extension = photo.type === "image/webp" ? "webp" : "jpg";
+  const storagePath = `${id}/${randomUUID()}.${extension}`;
+  const { error: uploadError } = await supabase.storage.from("member-photos").upload(storagePath, photo, { contentType: photo.type, upsert: false });
+  if (uploadError) redirect(`${path}?erreur=photo-impossible`);
   const { error } = await supabase.from("members").update({ photo_path: storagePath }).eq("id", id);
   if (error) {
     await supabase.storage.from("member-photos").remove([storagePath]);
@@ -159,4 +188,51 @@ export async function uploadMemberPhotoAction(formData: FormData) {
   if (previous?.photo_path) await supabase.storage.from("member-photos").remove([previous.photo_path]);
   revalidatePath(path); revalidatePath("/membres"); revalidatePath("/bureau");
   redirect(`${path}?statut=photo-enregistree`);
+}
+
+export async function removeMemberPhotoAction(formData: FormData) {
+  const id = value(formData, "member_id");
+  if (!z.string().uuid().safeParse(id).success) redirect("/admin/membres?erreur=membre-introuvable");
+  const path = `/admin/membres/${id}`;
+  const { supabase } = await adminContext(path);
+  const { data: member } = await supabase.from("members").select("photo_path").eq("id", id).maybeSingle();
+  if (!member) redirect(`${path}?erreur=membre-introuvable`);
+  const { error } = await supabase.from("members").update({ photo_path: null, photo_public_consent: false }).eq("id", id);
+  if (error) redirect(`${path}?erreur=photo-impossible`);
+  if (member.photo_path) await supabase.storage.from("member-photos").remove([member.photo_path]);
+  revalidatePath(path); revalidatePath("/membres"); revalidatePath("/bureau"); revalidatePath("/verification");
+  redirect(`${path}?statut=photo-supprimee`);
+}
+
+export async function deleteMemberAction(formData: FormData) {
+  const id = value(formData, "member_id");
+  if (!z.string().uuid().safeParse(id).success) redirect("/admin/membres?erreur=membre-introuvable");
+  const path = `/admin/membres/${id}`;
+  const { supabase, roles } = await adminContext(path);
+  if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  const { data: member } = await supabase.from("members").select("id,photo_path").eq("id", id).maybeSingle();
+  if (!member) redirect("/admin/membres?erreur=membre-introuvable");
+  const { data: deleted, error } = await supabase.from("members").delete().eq("id", id).select("id").maybeSingle();
+  if (error || !deleted) redirect(`${path}?erreur=suppression-impossible`);
+  if (member.photo_path) await supabase.storage.from("member-photos").remove([member.photo_path]);
+  revalidatePath("/admin/membres"); revalidatePath("/admin/archives"); revalidatePath("/membres"); revalidatePath("/archives"); revalidatePath("/bureau"); revalidatePath("/");
+  redirect("/admin/membres?statut=membre-supprime");
+}
+
+export async function anonymizeMemberAction(formData: FormData) {
+  const id = value(formData, "member_id");
+  if (!z.string().uuid().safeParse(id).success) redirect("/admin/membres?erreur=membre-introuvable");
+  const path = `/admin/membres/${id}`;
+  const { supabase, roles } = await adminContext(path);
+  if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  const { data: member } = await supabase.from("members").select("joined_year").eq("id", id).maybeSingle();
+  if (!member) redirect("/admin/membres?erreur=membre-introuvable");
+  let anonymizedNumber: string;
+  try { anonymizedNumber = await nextMemberNumber(supabase, member.joined_year); }
+  catch { redirect(`${path}?erreur=anonymisation-impossible`); }
+  const { data: oldPhoto, error } = await supabase.rpc("anonymize_member", { p_member_id: id, p_member_number: anonymizedNumber });
+  if (error) redirect(`${path}?erreur=anonymisation-impossible`);
+  if (oldPhoto) await supabase.storage.from("member-photos").remove([oldPhoto]);
+  revalidatePath(path); revalidatePath("/admin/membres"); revalidatePath("/admin/archives"); revalidatePath("/membres"); revalidatePath("/archives"); revalidatePath("/bureau"); revalidatePath("/");
+  redirect(`${path}?statut=membre-anonymise`);
 }

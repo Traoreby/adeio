@@ -18,13 +18,10 @@ export default async function MemberFinancesPage({ searchParams }: Props) {
   const [{ data: summaryRows }, { data: transactions }, { data: reports }] = await Promise.all([
     supabase.rpc("get_financial_summary", { p_from: from, p_to: to }),
     (() => { let query = supabase.from("financial_transactions").select("id,occurred_on,direction,label,amount_fcfa,payment_method,transaction_categories(name)").eq("is_published", true).order("occurred_on", { ascending: false }).limit(20); if (from) query = query.gte("occurred_on", from); if (to) query = query.lte("occurred_on", to); return query; })(),
-    supabase.from("financial_reports").select("id,title,period_start,period_end,summary,storage_path,file_name").order("period_end", { ascending: false }).limit(25),
+    supabase.from("financial_reports").select("id,title,period_start,period_end,summary").order("period_end", { ascending: false }).limit(25),
   ]);
   const summary = summaryRows?.[0];
-  const reportCards = await Promise.all((reports ?? []).map(async (report) => {
-    const { data } = await supabase.storage.from("financial-reports").createSignedUrl(report.storage_path, 60 * 20, { download: report.file_name });
-    return { ...report, url: data?.signedUrl ?? null };
-  }));
+  const reportCards = (reports ?? []).map((report) => ({ ...report, url: `/api/finances/reports/${report.id}` }));
   return <section className="member-space-page section-pad"><div className="container">
     <div className="member-space-heading"><div><div className="eyebrow eyebrow-green">TRANSPARENCE ET SUIVI</div><h1>Finances de l’association</h1><p>Consultez la situation générale et les bilans publiés.</p></div><Link href="/espace-membre" className="text-link">Mon espace</Link></div>
     <form className="finance-period-picker" aria-label="Période des finances"><label htmlFor="periode">Période affichée</label><select id="periode" name="periode" defaultValue={period}><option value="all">Depuis le début</option><option value="month">Ce mois</option><option value="quarter">Ce trimestre</option><option value="year">Cette année</option></select><FinanceSubmitButton pendingLabel="Chargement…">Appliquer</FinanceSubmitButton></form>

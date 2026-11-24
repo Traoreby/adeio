@@ -30,14 +30,15 @@ function toFcfa(raw: string) {
 
 async function allowedUpload(file: FormDataEntryValue | null, types: string[]) {
   if (!(file instanceof File) || file.size === 0) return null;
-  const extension = file.type === "application/pdf" ? "pdf" : file.type === "image/jpeg" ? "jpg" : file.type === "image/png" ? "png" : "";
-  if (!extension || file.size > 10 * 1024 * 1024 || !types.includes(file.type)) return null;
-  const header = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+  const extension = file.type === "application/pdf" ? "pdf" : file.type === "image/jpeg" ? "jpg" : file.type === "image/webp" ? "webp" : "";
+  const maxSize = file.type === "application/pdf" ? 2_000_000 : 1_000_000;
+  if (!extension || file.size > maxSize || !types.includes(file.type)) return null;
+  const header = new Uint8Array(await file.slice(0, 12).arrayBuffer());
   const validSignature = file.type === "application/pdf"
     ? String.fromCharCode(...header.slice(0, 5)) === "%PDF-"
     : file.type === "image/jpeg"
       ? header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff
-      : header.length === 8 && header[0] === 0x89 && header[1] === 0x50 && header[2] === 0x4e && header[3] === 0x47 && header[4] === 0x0d && header[5] === 0x0a && header[6] === 0x1a && header[7] === 0x0a;
+      : file.type === "image/webp" && String.fromCharCode(...header.slice(0, 4)) === "RIFF" && String.fromCharCode(...header.slice(8, 12)) === "WEBP";
   return validSignature ? { file, extension } : null;
 }
 
@@ -70,8 +71,13 @@ export async function createFinancialTransactionAction(formData: FormData) {
     if (!original?.is_published || original.direction === parsed.data.direction) redirect(`${path}?erreur=correction-invalide`);
   }
 
-  const attachment = await allowedUpload(formData.get("attachment"), ["application/pdf", "image/jpeg", "image/png"]);
-  if (formData.get("attachment") && !attachment) redirect(`${path}?erreur=justificatif-invalide`);
+  const rawAttachment = formData.get("attachment");
+  const attachment = await allowedUpload(rawAttachment, ["application/pdf", "image/jpeg", "image/webp"]);
+  if (rawAttachment instanceof File && rawAttachment.size > 0 && !attachment) redirect(`${path}?erreur=justificatif-invalide`);
+  const { data: thresholdSetting } = await supabase.from("settings").select("value").eq("key", "financial_receipt_required_threshold_fcfa").maybeSingle();
+  const thresholdValue = thresholdSetting?.value && typeof thresholdSetting.value === "object" ? thresholdSetting.value.thresholdFcfa : null;
+  const requiredThreshold = typeof thresholdValue === "number" && thresholdValue > 0 ? thresholdValue : null;
+  if (requiredThreshold !== null && parsed.data.amount > requiredThreshold && !attachment) redirect(`${path}?erreur=justificatif-obligatoire`);
 
   const { data: transaction, error: insertError } = await supabase.from("financial_transactions").insert({
     occurred_on: parsed.data.occurredOn,
@@ -220,26 +226,26 @@ export async function publishFinancialReportAction(formData: FormData) {
     periodEnd: value(formData, "period_end"),
     summary: value(formData, "summary"),
   });
-  const file = await allowedUpload(formData.get("report_pdf"), ["application/pdf"]);
-  if (!parsed.success || !file || parsed.data.periodEnd < parsed.data.periodStart) redirect(`${path}?erreur=rapport-invalide`);
+  if (!parsed.success || parsed.data.periodEnd < parsed.data.periodStart) redirect(`${path}?erreur=rapport-invalide`);
+  const { data: summaries, error: summaryError } = await supabase.rpc("get_financial_summary", { p_from: parsed.data.periodStart, p_to: parsed.data.periodEnd });
+  const summary = summaries?.[0];
+  if (summaryError || !summary) redirect(`${path}?erreur=publication-impossible`);
 
-  const storagePath = `${user.id}/${crypto.randomUUID()}.pdf`;
-  const { error: uploadError } = await supabase.storage.from("financial-reports").upload(storagePath, file.file, { contentType: "application/pdf", upsert: false });
-  if (uploadError) redirect(`${path}?erreur=publication-impossible`);
   const { error: insertError } = await supabase.from("financial_reports").insert({
     title: parsed.data.title,
     period_start: parsed.data.periodStart,
     period_end: parsed.data.periodEnd,
     summary: parsed.data.summary || null,
-    storage_path: storagePath,
-    file_name: file.file.name.slice(0, 180),
-    mime_type: "application/pdf",
+    storage_path: null,
+    file_name: null,
+    mime_type: null,
+    total_income_fcfa: summary.total_income_fcfa,
+    total_expense_fcfa: summary.total_expense_fcfa,
+    net_balance_fcfa: summary.net_balance_fcfa,
+    transaction_count: summary.transaction_count,
     created_by: user.id,
   });
-  if (insertError) {
-    await supabase.storage.from("financial-reports").remove([storagePath]);
-    redirect(`${path}?erreur=publication-impossible`);
-  }
+  if (insertError) redirect(`${path}?erreur=publication-impossible`);
   revalidatePath(path);
   revalidatePath("/finances");
   revalidatePath("/espace-membre/documents");

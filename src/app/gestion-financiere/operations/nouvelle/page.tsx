@@ -3,21 +3,26 @@ import { ArrowLeft, FilePlus2 } from "lucide-react";
 import { getSignedInUser } from "@/lib/auth";
 import { createFinancialTransactionAction } from "@/app/gestion-financiere/actions";
 import { FinanceSubmitButton } from "@/components/finance-submit-button";
+import { FinancialAttachmentInput } from "@/components/financial-attachment-input";
 
 type Props = { searchParams: Promise<{ erreur?: string }> };
 
 export default async function NewFinancialTransactionPage({ searchParams }: Props) {
   const [{ supabase }, params] = await Promise.all([getSignedInUser(), searchParams]);
   if (!supabase) return null;
-  const [{ data: categories }, { data: recentTransactions }] = await Promise.all([
+  const [{ data: categories }, { data: recentTransactions }, { data: receiptSetting }] = await Promise.all([
     supabase.from("transaction_categories").select("id,name,direction").eq("is_active", true).order("direction").order("name"),
     supabase.from("financial_transactions").select("id,occurred_on,direction,label,amount_fcfa").eq("is_published", true).order("occurred_on", { ascending: false }).limit(100),
+    supabase.from("settings").select("value").eq("key", "financial_receipt_required_threshold_fcfa").maybeSingle(),
   ]);
+  const thresholdValue = receiptSetting?.value && typeof receiptSetting.value === "object" ? receiptSetting.value.thresholdFcfa : null;
+  const receiptThreshold = typeof thresholdValue === "number" && thresholdValue > 0 ? thresholdValue : null;
   const errors: Record<string, string> = {
     "formulaire-invalide": "Vérifiez la date, le libellé, le montant et le moyen de paiement.",
     "categorie-invalide": "La catégorie choisie ne correspond pas à la nature de l’opération.",
     "correction-invalide": "Une correction doit être liée à une opération publiée de sens opposé.",
-    "justificatif-invalide": "Joignez un justificatif PDF, JPG ou PNG de 10 Mo maximum.",
+    "justificatif-invalide": "Joignez un PDF de 2 Mo maximum ou une image JPG/WebP compressée de 1 Mo maximum.",
+    "justificatif-obligatoire": "Le montant dépasse le seuil configuré : joignez un justificatif pour continuer.",
     "enregistrement-impossible": "L’opération n’a pas pu être enregistrée.",
     "justificatif-impossible": "Le justificatif n’a pas pu être enregistré ; l’écriture provisoire a été annulée.",
     "publication-impossible": "La publication a échoué ; l’écriture provisoire a été annulée.",
@@ -31,7 +36,7 @@ export default async function NewFinancialTransactionPage({ searchParams }: Prop
       <div><label htmlFor="label">Libellé</label><input id="label" name="label" required minLength={3} maxLength={180} placeholder="Ex. Frais de location de salle" /></div>
       <div className="admin-form-grid"><div><label htmlFor="amount_fcfa">Montant (FCFA)</label><input id="amount_fcfa" name="amount_fcfa" type="number" min="1" max="1000000000000" step="1" required inputMode="numeric" /></div><div><label htmlFor="payment_method">Moyen de paiement</label><select id="payment_method" name="payment_method" required defaultValue="cash"><option value="cash">Espèces</option><option value="mobile_money">Mobile money</option><option value="bank_transfer">Virement</option><option value="other">Autre</option></select></div></div>
       <div><label htmlFor="correction_of">Écriture corrigée (facultatif)</label><select id="correction_of" name="correction_of" defaultValue=""><option value="">Aucune, écriture normale</option>{recentTransactions?.map((transaction) => <option key={transaction.id} value={transaction.id}>{transaction.occurred_on} · {transaction.direction === "income" ? "Recette" : "Dépense"} · {transaction.label} · {transaction.amount_fcfa.toLocaleString("fr-FR")} FCFA</option>)}</select><small>Pour rectifier une publication, choisissez l’écriture d’origine et saisissez le sens opposé.</small></div>
-      <div><label htmlFor="attachment">Justificatif (facultatif)</label><input id="attachment" name="attachment" type="file" accept="application/pdf,image/jpeg,image/png" /><small>PDF, JPG ou PNG · 10 Mo maximum · fichier stocké en privé.</small></div>
+      <div><label htmlFor="attachment">Justificatif</label><FinancialAttachmentInput requiredAboveFcfa={receiptThreshold} /></div>
       <div className="admin-banner">Après validation, l’écriture sera immédiatement visible aux membres. Les corrections et annulations se font par une nouvelle écriture tracée.</div>
       <FinanceSubmitButton pendingLabel="Publication…">Publier l’opération</FinanceSubmitButton>
     </form></div>

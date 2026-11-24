@@ -917,3 +917,32 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
   .header-session > .sign-out-button { width: 44px; height: 44px; justify-content: center; padding: 0; }
   .header-session > .sign-out-button .sign-out-label { display: none; }
 }
+
+.photo-crop-controls { display: grid; width: min(100%, 360px); gap: 7px; }
+.photo-crop-controls label, .finance-attachment-input > small { color: #405047; font-size: 13px; font-weight: 650; }
+.photo-crop-controls select, .photo-crop-controls input[type="range"] { width: 100%; min-height: 38px; }
+.member-photo-input-preview { position: relative; width: 144px; aspect-ratio: 1; overflow: hidden; border-radius: 14px; background: #edf3ee; }
+.member-photo-input-preview.is-portrait { width: 116px; aspect-ratio: 4 / 5; }
+.member-photo-input-preview img { object-fit: cover; }
+.finance-attachment-input { display: grid; gap: 6px; }
+.finance-attachment-input [role="alert"] { color: #9d271f; }
+.storage-usage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 20px 0; }
+.storage-usage-item { min-width: 0; padding: 16px; border: 1px solid #e1e9e2; border-radius: 14px; background: #fbfdfb; }
+.storage-usage-item > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 7px; }
+.storage-usage-item strong { color: #26352c; }
+.storage-usage-item span, .storage-admin-help, .storage-orphan-row small { color: #47564c; font-size: 13px; }
+.storage-meter { height: 10px; margin-top: 12px; overflow: hidden; border-radius: 99px; background: #e8eee9; }
+.storage-meter > span { display: block; height: 100%; border-radius: inherit; background: #009e60; transition: width 180ms ease; }
+.storage-meter > span.is-warning { background: #f77f00; }
+.storage-warning { display: block; margin-top: 8px; color: #9a4c00 !important; font-size: 13px; }
+.storage-admin-help { margin-bottom: 20px; }
+.storage-orphan-row { align-items: center; }
+.storage-orphan-row p { max-width: min(100%, 600px); overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.member-privacy-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+@media (max-width: 760px) {
+  .storage-usage-grid { grid-template-columns: 1fr; }
+  .storage-orphan-row > form { align-self: flex-start; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .storage-meter > span { transition: none; }
+}
