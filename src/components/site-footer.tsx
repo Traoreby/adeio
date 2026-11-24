@@ -1,9 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import { ArrowUpRight, Mail, MapPin, MessageCircle } from "lucide-react";
+import { contactEmail } from "@/lib/contact-info";
 
 export function SiteFooter() {
-  const contactEmail = process.env.CONTACT_EMAIL;
   const contactWhatsapp = process.env.CONTACT_WHATSAPP;
   return (
     <footer className="site-footer">

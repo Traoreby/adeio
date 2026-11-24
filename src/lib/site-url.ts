@@ -12,7 +12,7 @@ export async function getSiteBaseUrl() {
     }
   }
 
-  // Email links must always use the configured canonical HTTPS URL in production.
+  // Email links must always use the configured HTTPS application URL in production.
   if (process.env.NODE_ENV === "production") return null;
 
   const developmentDomain = process.env.VERCEL_URL;
