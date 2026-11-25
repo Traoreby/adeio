@@ -292,17 +292,94 @@ export async function removeMemberPhotoAction(formData: FormData) {
   redirect(`${path}?statut=photo-supprimee`);
 }
 
+async function listMemberPhotoFiles(service: NonNullable<ReturnType<typeof createSupabaseServiceClient>>, folder: string): Promise<string[]> {
+  const paths: string[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await service.storage.from("member-photos").list(folder, { limit: 100, offset });
+    if (error) throw new Error("stockage-indisponible");
+    for (const item of data) {
+      const path = `${folder}/${item.name}`;
+      if (item.id === null && item.metadata === null) paths.push(...await listMemberPhotoFiles(service, path));
+      else paths.push(path);
+    }
+    if (data.length < 100) break;
+    offset += data.length;
+  }
+  return paths;
+}
+
+function deletionErrorCode(message: string) {
+  if (message.includes("MEMBER_CONFIRMATION_MISMATCH")) return "suppression-confirmation";
+  if (message.includes("FINANCIAL_DATA_BLOCK") || message.includes("FINANCIAL_CREATOR_DATA_BLOCK")) return "suppression-financiere";
+  if (message.includes("AUTH_ACCOUNT_HAS_NON_MEMBER_ROLE") || message.includes("MEMBER_AUTH_LINK_CONFLICT") || message.includes("MEMBER_AUTH_HISTORY_CONFLICT")) return "suppression-role";
+  if (message.includes("CANNOT_DELETE_CURRENT_SUPER_ADMIN") || message.includes("SUPER_ADMIN_REQUIRED")) return "suppression-role";
+  if (message.includes("MEMBER_NOT_FOUND")) return "membre-introuvable";
+  return "suppression-impossible";
+}
+
 export async function deleteMemberAction(formData: FormData) {
   const id = value(formData, "member_id");
   if (!z.string().uuid().safeParse(id).success) redirect("/admin/membres?erreur=membre-introuvable");
   const path = `/admin/membres/${id}`;
   const { supabase, roles } = await adminContext(path);
   if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
-  const { data: member } = await supabase.from("members").select("id,photo_path").eq("id", id).maybeSingle();
-  if (!member) redirect("/admin/membres?erreur=membre-introuvable");
-  const { data: deleted, error } = await supabase.from("members").delete().eq("id", id).select("id").maybeSingle();
-  if (error || !deleted) redirect(`${path}?erreur=suppression-impossible`);
-  if (member.photo_path) await supabase.storage.from("member-photos").remove([member.photo_path]);
+  const expectedNumber = value(formData, "confirm_member_number").trim().toUpperCase();
+  if (!/^ADEIO-\d{4}-[A-Z0-9]{4}$/.test(expectedNumber)) redirect(`${path}?erreur=suppression-confirmation`);
+  const service = createSupabaseServiceClient();
+  if (!service) redirect(`${path}?erreur=suppression-configuration`);
+
+  const { data: preparedRows, error: prepareError } = await supabase.rpc("prepare_member_permanent_deletion", {
+    p_member_id: id,
+    p_expected_member_number: expectedNumber,
+  });
+  if (prepareError) redirect(`${path}?erreur=${deletionErrorCode(prepareError.message)}`);
+  const prepared = Array.isArray(preparedRows) ? preparedRows[0] : preparedRows;
+  if (!prepared) redirect(`${path}?erreur=suppression-impossible`);
+
+  const authUserId = prepared.auth_user_id as string | null;
+  const restoreMemberLink = Boolean(prepared.restore_member_link);
+  const cancelPreparation = async () => {
+    const { error } = await supabase.rpc("cancel_member_permanent_deletion", {
+      p_member_id: id,
+      p_expected_member_number: expectedNumber,
+      p_auth_user_id: authUserId,
+      p_restore_member_link: restoreMemberLink,
+    });
+    return !error;
+  };
+
+  if (authUserId) {
+    const lookup = await service.auth.admin.getUserById(authUserId);
+    if (lookup.data.user) {
+      const { error } = await service.auth.admin.deleteUser(authUserId);
+      if (error) {
+        const restored = await cancelPreparation();
+        redirect(`${path}?erreur=${restored ? "suppression-auth" : "suppression-partielle"}`);
+      }
+    } else if (lookup.error && lookup.error.status !== 404 && lookup.error.code !== "user_not_found") {
+      const restored = await cancelPreparation();
+      redirect(`${path}?erreur=${restored ? "suppression-auth" : "suppression-partielle"}`);
+    }
+  }
+
+  try {
+    const storedFiles = await listMemberPhotoFiles(service, id);
+    const photoPath = typeof prepared.member_photo_path === "string" ? prepared.member_photo_path : null;
+    const allPaths = [...new Set([...storedFiles, ...(photoPath ? [photoPath] : [])])];
+    for (let index = 0; index < allPaths.length; index += 100) {
+      const { error } = await service.storage.from("member-photos").remove(allPaths.slice(index, index + 100));
+      if (error) throw new Error("stockage-indisponible");
+    }
+  } catch {
+    redirect(`${path}?erreur=suppression-stockage`);
+  }
+
+  const { error: finalizeError } = await supabase.rpc("finalize_member_permanent_deletion", {
+    p_member_id: id,
+    p_expected_member_number: expectedNumber,
+  });
+  if (finalizeError) redirect(`${path}?erreur=${deletionErrorCode(finalizeError.message) === "suppression-impossible" ? "suppression-partielle" : deletionErrorCode(finalizeError.message)}`);
   revalidatePath("/admin/membres"); revalidatePath("/admin/archives"); revalidatePath("/membres"); revalidatePath("/archives"); revalidatePath("/bureau"); revalidatePath("/");
   redirect("/admin/membres?statut=membre-supprime");
 }

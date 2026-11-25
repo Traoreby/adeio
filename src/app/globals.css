@@ -1029,7 +1029,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .storage-orphan-row { align-items: center; }
 .storage-orphan-row p { max-width: min(100%, 600px); overflow-wrap: anywhere; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
 .member-privacy-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.member-privacy-actions > form { display: grid; justify-items: start; gap: 10px; min-width: min(100%, 320px); max-width: 560px; }
+.member-delete-card .member-privacy-actions > form:last-child { flex: 1 1 100%; padding: 16px; border: 1px solid #f0c9c4; border-radius: 14px; background: #fffaf9; }
+.member-delete-card label, .member-delete-card small { max-width: 100%; color: #39453d; font-size: 14px; line-height: 1.5; }
+.member-delete-card input[name="confirm_member_number"] { width: min(100%, 340px); min-height: 46px; padding: 10px 12px; border: 1px solid #aeb8b0; border-radius: 9px; background: #fff; color: #17231a; font: inherit; font-size: 16px; letter-spacing: .04em; }
+.member-delete-card input[name="confirm_member_number"]:focus-visible { outline: 3px solid rgb(0 158 96 / 24%); border-color: #009e60; }
+.member-delete-card .danger-action { min-height: 46px; padding: 10px 14px; font-weight: 700; }
 @media (max-width: 760px) {
+  .member-privacy-actions, .member-privacy-actions > form { width: 100%; }
+  .member-delete-card input[name="confirm_member_number"] { width: 100%; }
   .storage-usage-grid { grid-template-columns: 1fr; }
   .storage-orphan-row > form { align-self: flex-start; }
 }
