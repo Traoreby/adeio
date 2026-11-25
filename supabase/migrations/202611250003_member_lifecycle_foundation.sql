@@ -342,8 +342,7 @@ $$;
 revoke all on function public.has_active_member_qr(uuid) from public, anon;
 grant execute on function public.has_active_member_qr(uuid) to authenticated;
 
-drop function if exists public.get_visible_announcements(integer);
-create function public.get_visible_announcements(p_limit integer default 12, p_offset integer default 0)
+create or replace function public.get_visible_announcements(p_limit integer default 12, p_offset integer default 0)
 returns table(id uuid, title text, slug text, summary text, body text, image_url text, is_pinned boolean, published_at timestamptz, visibility public.announcement_visibility)
 language sql stable security definer
 set search_path = public
