@@ -513,6 +513,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .member-photo-input > input { max-width: 380px; padding: 5px !important; font-size: 13px !important; }
 .member-photo-input img { width: 108px; height: 108px; border-radius: 16px; object-fit: cover; }
 .member-photo-input small, .member-qr-control small { display: block; color: #526056; font-size: 12px; line-height: 1.6; }
+.member-camera-input { display: none !important; }
+.member-photo-source-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 14px; }
+.member-photo-source-actions button { min-height: 40px; padding: 8px 12px; border: 1px solid #16804b; border-radius: 10px; background: #fff; color: #086b3a; font-size: 14px; font-weight: 700; cursor: pointer; }
+.member-photo-source-actions button:hover { background: #edf7ef; }
 .member-period-list { display: grid; gap: 0; }
 .member-period-list > div { display: flex; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid #edf0ed; color: #28342c; font-size: 13px; }
 .member-period-list > div:first-child { border-top: 0; }

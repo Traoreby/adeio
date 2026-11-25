@@ -7,8 +7,9 @@ import { prepareImageUpload, type ImageCrop } from "@/lib/client-image-processin
 
 const MAX_PHOTO_BYTES = 500_000;
 
-export function MemberPhotoInput() {
+export function MemberPhotoInput({ required = false }: { required?: boolean }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState<File | null>(null);
   const [preview, setPreview] = useState("");
   const [crop, setCrop] = useState<ImageCrop>({ aspect: "square", x: 0.5, y: 0.5 });
@@ -63,7 +64,9 @@ export function MemberPhotoInput() {
 
   return <div className="member-photo-input">
     <label htmlFor="member-photo"><ImagePlus size={15} /> Photo du membre</label>
-    <input ref={inputRef} id="member-photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" onChange={(event) => onSelect(event.target.files?.[0])} />
+    <input ref={inputRef} id="member-photo" name="photo" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" required={required} onChange={(event) => onSelect(event.target.files?.[0])} />
+    <input ref={cameraRef} className="member-camera-input" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" capture="user" onChange={(event) => { const file = event.target.files?.[0]; if (file) void prepare(file, { aspect: "square", x: 0.5, y: 0.5 }); }} aria-label="Prendre une photo avec la caméra" />
+    <div className="member-photo-source-actions"><button type="button" className="text-action" onClick={() => cameraRef.current?.click()}>Prendre une photo</button><button type="button" className="text-action" onClick={() => inputRef.current?.click()}>Importer depuis l’appareil</button></div>
     {source && <div className="photo-crop-controls"><label htmlFor="photo-crop-shape">Format du recadrage</label><select id="photo-crop-shape" value={crop.aspect} onChange={(event) => { setCrop({ ...crop, aspect: event.target.value as Exclude<ImageCrop["aspect"], "original"> }); inputRef.current?.setCustomValidity("Cliquez sur Mettre à jour l’aperçu pour valider ce recadrage."); }}><option value="square">Carré · 1:1</option><option value="portrait">Portrait · 4:5</option></select><label htmlFor="photo-crop-x">Position horizontale</label><input id="photo-crop-x" type="range" min="0" max="1" step="0.01" value={crop.x} onChange={(event) => { setCrop({ ...crop, x: Number(event.target.value) }); inputRef.current?.setCustomValidity("Cliquez sur Mettre à jour l’aperçu pour valider ce recadrage."); }} /><label htmlFor="photo-crop-y">Position verticale</label><input id="photo-crop-y" type="range" min="0" max="1" step="0.01" value={crop.y} onChange={(event) => { setCrop({ ...crop, y: Number(event.target.value) }); inputRef.current?.setCustomValidity("Cliquez sur Mettre à jour l’aperçu pour valider ce recadrage."); }} /><button type="button" className="text-action" disabled={busy} onClick={() => void prepare(source, crop)}>Mettre à jour l’aperçu</button></div>}
     {preview && <div className={`member-photo-input-preview ${crop.aspect === "portrait" ? "is-portrait" : ""}`}><Image src={preview} alt="Aperçu de la photo recadrée et compressée" fill sizes="(max-width: 760px) 42vw, 180px" unoptimized />{busy && <span>Recompression…</span>}</div>}
     {busy && <p role="status">Compression de la photo…</p>}

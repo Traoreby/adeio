@@ -10,10 +10,12 @@ const memberSchema = z.object({
   firstName: z.string().trim().min(1).max(100),
   lastName: z.string().trim().min(1).max(100),
   joinedYear: z.coerce.number().int().min(1900).max(2200),
-  exitYear: z.preprocess((value) => value === "" ? undefined : Number(value), z.number().int().min(1900).max(2200).optional()),
+  exitYear: z.preprocess((value) => value === "" ? Number.NaN : Number(value), z.number().int().min(1900).max(2200)),
+  studyProgram: z.string().trim().min(2).max(160),
+  institution: z.string().trim().min(2).max(200),
+  sex: z.enum(["female", "male", "other", "prefer_not_to_say"]),
   status: z.enum(["active", "former", "suspended", "deceased"]),
-  email: z.union([z.string().trim().email().max(254), z.literal("")]).optional(),
-  phone: z.string().trim().max(40).optional(),
+  phone: z.string().trim().min(6).max(40),
   userId: z.union([z.string().uuid(), z.literal("")]).optional(),
   photoConsent: z.boolean(),
 });
@@ -37,8 +39,10 @@ function parseMember(formData: FormData) {
     lastName: value(formData, "last_name"),
     joinedYear: value(formData, "joined_year"),
     exitYear: value(formData, "exit_year"),
+    studyProgram: value(formData, "study_program"),
+    institution: value(formData, "institution"),
+    sex: value(formData, "sex"),
     status: value(formData, "status"),
-    email: value(formData, "email"),
     phone: value(formData, "phone"),
     userId: value(formData, "user_id"),
     photoConsent: formData.get("photo_public_consent") === "on",
@@ -65,54 +69,38 @@ async function nextMemberNumber(supabase: NonNullable<Awaited<ReturnType<typeof 
 }
 
 export async function createMemberAction(formData: FormData) {
-  const { supabase, user } = await adminContext("/admin/membres/nouveau");
+  const { supabase } = await adminContext("/admin/membres/nouveau");
   const parsed = parseMember(formData);
-  if (!parsed.success || (parsed.data.exitYear && parsed.data.exitYear < parsed.data.joinedYear)) redirect("/admin/membres/nouveau?erreur=formulaire-invalide");
+  const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
+  if (!parsed.success || parsed.data.exitYear < parsed.data.joinedYear
+    || (parsed.data.status === "active" && parsed.data.exitYear <= currentYear)) redirect("/admin/membres/nouveau?erreur=formulaire-invalide");
   const input = parsed.data;
+  if (input.userId) {
+    const { data: onboarding } = await supabase.from("member_onboarding").select("kind").eq("user_id", input.userId).maybeSingle();
+    if (onboarding?.kind === "reactivation") redirect("/admin/membres/nouveau?erreur=compte-en-reactivation");
+  }
+  const photo = await validMemberPhoto(formData.get("photo"));
+  if (photo === false) redirect("/admin/membres/nouveau?erreur=photo-invalide");
   let memberNumber: string;
   try { memberNumber = await nextMemberNumber(supabase, input.joinedYear); }
   catch { redirect("/admin/membres/nouveau?erreur=numero-impossible"); }
 
-  const { data: member, error } = await supabase.from("members").insert({
-    member_number: memberNumber,
-    first_name: input.firstName,
-    last_name: input.lastName,
-    joined_year: input.joinedYear,
-    status: input.status,
-    user_id: input.userId || null,
-    photo_public_consent: input.photoConsent,
-    created_by: user.id,
-  }).select("id").single();
-  if (error || !member) redirect(`/admin/membres/nouveau?erreur=${encodeURIComponent(error?.code === "23505" ? "numero-existant" : "creation-impossible")}`);
-
-  const { error: periodError } = await supabase.from("membership_periods").insert({
-    member_id: member.id,
-    starts_on: `${input.joinedYear}-01-01`,
-    ends_on: input.exitYear ? `${input.exitYear}-12-31` : null,
-    created_by: user.id,
+  const { data: memberId, error } = await supabase.rpc("admin_create_member", {
+    p_member_number: memberNumber, p_first_name: input.firstName, p_last_name: input.lastName,
+    p_joined_year: input.joinedYear, p_exit_year: input.exitYear, p_study_program: input.studyProgram,
+    p_institution: input.institution, p_phone: input.phone, p_sex: input.sex, p_status: input.status,
+    p_user_id: input.userId || null, p_photo_public_consent: input.photoConsent,
   });
-  const { error: detailsError } = await supabase.from("member_private_details").upsert({ member_id: member.id, email: input.email || null, phone: input.phone || null });
-  if (periodError || detailsError) {
-    await supabase.from("members").delete().eq("id", member.id);
-    redirect("/admin/membres/nouveau?erreur=creation-impossible");
-  }
-  const photo = await validMemberPhoto(formData.get("photo"));
-  if (photo === false) {
-    await supabase.from("members").delete().eq("id", member.id);
-    redirect("/admin/membres/nouveau?erreur=photo-invalide");
-  }
+  if (error || !memberId) redirect(`/admin/membres/nouveau?erreur=${encodeURIComponent(error?.code === "23505" ? "numero-existant" : "creation-impossible")}`);
+
   if (photo) {
-    const storagePath = `${member.id}/${randomUUID()}.${photo.type === "image/webp" ? "webp" : "jpg"}`;
+    const storagePath = `${memberId}/${randomUUID()}.${photo.type === "image/webp" ? "webp" : "jpg"}`;
     const { error: photoUploadError } = await supabase.storage.from("member-photos").upload(storagePath, photo, { contentType: photo.type, upsert: false });
-    if (photoUploadError) {
-      await supabase.from("members").delete().eq("id", member.id);
-      redirect("/admin/membres/nouveau?erreur=photo-impossible");
-    }
-    const { error: photoLinkError } = await supabase.from("members").update({ photo_path: storagePath }).eq("id", member.id);
+    if (photoUploadError) redirect(`/admin/membres/${memberId}?erreur=photo-impossible`);
+    const { error: photoLinkError } = await supabase.from("members").update({ photo_path: storagePath }).eq("id", memberId);
     if (photoLinkError) {
       await supabase.storage.from("member-photos").remove([storagePath]);
-      await supabase.from("members").delete().eq("id", member.id);
-      redirect("/admin/membres/nouveau?erreur=photo-impossible");
+      redirect(`/admin/membres/${memberId}?erreur=photo-impossible`);
     }
   }
   revalidatePath("/admin/membres");
@@ -120,7 +108,7 @@ export async function createMemberAction(formData: FormData) {
   revalidatePath("/membres");
   revalidatePath("/archives");
   revalidatePath("/");
-  redirect(`/admin/membres/${member.id}?statut=membre-cree`);
+  redirect(`/admin/membres/${memberId}?statut=membre-cree`);
 }
 
 export async function updateMemberAction(formData: FormData) {
@@ -129,25 +117,25 @@ export async function updateMemberAction(formData: FormData) {
   const nextPath = `/admin/membres/${id}`;
   const { supabase } = await adminContext(nextPath);
   const parsed = parseMember(formData);
-  if (!parsed.success || (parsed.data.exitYear && parsed.data.exitYear < parsed.data.joinedYear)) redirect(`${nextPath}?erreur=formulaire-invalide`);
+  if (!parsed.success || parsed.data.exitYear < parsed.data.joinedYear) redirect(`${nextPath}?erreur=formulaire-invalide`);
   const input = parsed.data;
-  const { error } = await supabase.from("members").update({
-    first_name: input.firstName, last_name: input.lastName, joined_year: input.joinedYear,
-    status: input.status, user_id: input.userId || null, photo_public_consent: input.photoConsent,
-  }).eq("id", id);
-  if (error) redirect(`${nextPath}?erreur=modification-impossible`);
-  const { error: detailError } = await supabase.from("member_private_details").upsert({ member_id: id, email: input.email || null, phone: input.phone || null });
-  if (detailError) redirect(`${nextPath}?erreur=modification-impossible`);
-  // Conserver les intervalles historiques ; mettre à jour uniquement l'intervalle initial créé avec la fiche.
-  const { data: periods } = await supabase.from("membership_periods").select("id,starts_on,ends_on").eq("member_id", id).order("starts_on", { ascending: true }).limit(1);
-  if (periods?.[0]) {
-    const initial = periods[0];
-    const { error: periodError } = await supabase.from("membership_periods").update({
-      starts_on: `${input.joinedYear}-01-01`,
-      ends_on: input.exitYear ? `${input.exitYear}-12-31` : null,
-    }).eq("id", initial.id);
-    if (periodError) redirect(`${nextPath}?erreur=modification-impossible`);
+  const { data: existing } = await supabase.from("members").select("status,joined_year,user_id").eq("id", id).maybeSingle();
+  if (!existing) redirect("/admin/membres?erreur=membre-introuvable");
+  if (existing.status !== "active" && input.status === "active") redirect(`${nextPath}?erreur=utiliser-reactivation`);
+  if (input.status === "active" && input.exitYear <= Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()))) redirect(`${nextPath}?erreur=annee-sortie-invalide`);
+  if (input.joinedYear !== existing.joined_year) redirect(`${nextPath}?erreur=annee-initiale-immuable`);
+  if (existing.user_id && input.userId !== existing.user_id) redirect(`${nextPath}?erreur=compte-lie-immuable`);
+  if (!existing.user_id && input.userId) {
+    const { data: onboarding } = await supabase.from("member_onboarding").select("kind").eq("user_id", input.userId).maybeSingle();
+    if (onboarding?.kind === "reactivation") redirect(`${nextPath}?erreur=compte-en-reactivation`);
   }
+  const { error } = await supabase.rpc("admin_update_member_profile", {
+    p_member_id: id, p_first_name: input.firstName, p_last_name: input.lastName, p_exit_year: input.exitYear,
+    p_study_program: input.studyProgram, p_institution: input.institution, p_phone: input.phone,
+    p_sex: input.sex, p_status: input.status, p_user_id: input.userId || null,
+    p_photo_public_consent: input.photoConsent,
+  });
+  if (error) redirect(`${nextPath}?erreur=${encodeURIComponent(error.code === "42501" ? "utiliser-reactivation" : "modification-impossible")}`);
   revalidatePath("/admin/membres"); revalidatePath("/admin/archives"); revalidatePath("/membres"); revalidatePath("/archives"); revalidatePath(nextPath);
   redirect(`${nextPath}?statut=membre-modifie`);
 }

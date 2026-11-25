@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   if (!supabase || !user) return NextResponse.json({ error: "Connectez-vous pour continuer." }, { status: 401 });
   if (!roles.some((role) => role === "admin" || role === "super_admin")) return NextResponse.json({ error: "Accès réservé à l’administration." }, { status: 403 });
   if (!await hasRequiredMfa(supabase, user.id)) return NextResponse.json({ error: "Validez votre authentification à deux facteurs." }, { status: 403 });
-  const { error } = await supabase.from("member_qr_tokens").update({ revoked_at: new Date().toISOString() }).eq("member_id", parsed.data.memberId).is("revoked_at", null);
+  const { error } = await supabase.rpc("revoke_member_qr", { p_member_id: parsed.data.memberId });
   if (error) return NextResponse.json({ error: "Le QR Code n’a pas pu être désactivé." }, { status: 500 });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, message: "QR désactivé. Cet ancien lien de vérification ne sera plus jamais valide." });
 }

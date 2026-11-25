@@ -7,10 +7,12 @@ const importRowSchema = z.object({
   firstName: z.string().trim().min(1).max(100),
   lastName: z.string().trim().min(1).max(100),
   joinedYear: z.coerce.number().int().min(1900).max(2200),
-  exitYear: z.union([z.number().int().min(1900).max(2200), z.null()]).optional(),
+  exitYear: z.number().int().min(1900).max(2200),
   status: z.enum(["active", "former", "suspended", "deceased"]).default("active"),
-  email: z.union([z.string().trim().email().max(254), z.literal("")]).optional(),
-  phone: z.string().trim().max(40).optional(),
+  phone: z.string().trim().min(6).max(40),
+  studyProgram: z.string().trim().min(2).max(160),
+  institution: z.string().trim().min(2).max(200),
+  sex: z.enum(["female", "male", "other", "prefer_not_to_say"]),
 });
 
 function jsonError(message: string, status: number) {
@@ -41,29 +43,24 @@ export async function POST(request: NextRequest) {
   if (!await hasRequiredMfa(supabase, user.id)) return jsonError("Validez votre authentification à deux facteurs.", 403);
 
   const report: { row: number; ok: boolean; message: string }[] = [];
+  const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
   for (let index = 0; index < body.rows.length; index += 1) {
     const parsed = importRowSchema.safeParse(body.rows[index]);
     const rowNumber = index + 2;
-    if (!parsed.success || (parsed.data.exitYear && parsed.data.exitYear < parsed.data.joinedYear)) {
-      report.push({ row: rowNumber, ok: false, message: parsed.success ? "L’année de sortie précède l’année d’entrée." : parsed.error.issues[0]?.message ?? "Ligne invalide." });
+    if (!parsed.success || parsed.data.exitYear < parsed.data.joinedYear || (parsed.data.status === "active" && parsed.data.exitYear <= currentYear)) {
+      report.push({ row: rowNumber, ok: false, message: parsed.success ? "Vérifiez l’année de sortie ; elle doit être future pour un membre actif." : parsed.error.issues[0]?.message ?? "Ligne invalide." });
       continue;
     }
     const item = parsed.data;
     try {
       const memberNumber = await generateMemberNumber(supabase, item.joinedYear);
-      const { data: member, error } = await supabase.from("members").insert({
-        member_number: memberNumber, first_name: item.firstName, last_name: item.lastName,
-        joined_year: item.joinedYear, status: item.status, created_by: user.id,
-      }).select("id").single();
-      if (error || !member) throw new Error(error?.code === "23505" ? "Doublon détecté." : "La fiche membre n’a pas été créée.");
-      const { error: periodError } = await supabase.from("membership_periods").insert({
-        member_id: member.id, starts_on: `${item.joinedYear}-01-01`, ends_on: item.exitYear ? `${item.exitYear}-12-31` : null, created_by: user.id,
+      const { error } = await supabase.rpc("admin_create_member", {
+        p_member_number: memberNumber, p_first_name: item.firstName, p_last_name: item.lastName,
+        p_joined_year: item.joinedYear, p_exit_year: item.exitYear, p_study_program: item.studyProgram,
+        p_institution: item.institution, p_phone: item.phone, p_sex: item.sex,
+        p_status: item.status, p_user_id: null, p_photo_public_consent: false,
       });
-      const { error: detailError } = await supabase.from("member_private_details").insert({ member_id: member.id, email: item.email || null, phone: item.phone || null });
-      if (periodError || detailError) {
-        await supabase.from("members").delete().eq("id", member.id);
-        throw new Error("La période ou les coordonnées n’ont pas été enregistrées.");
-      }
+      if (error) throw new Error(error.code === "23505" ? "Doublon détecté." : "La fiche ou son historique n’a pas pu être créé.");
       report.push({ row: rowNumber, ok: true, message: `Importé : ${memberNumber}` });
     } catch (error) {
       report.push({ row: rowNumber, ok: false, message: error instanceof Error ? error.message : "Échec de l’import." });

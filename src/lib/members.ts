@@ -2,7 +2,7 @@ export type MemberStatus = "active" | "former" | "suspended" | "deceased";
 
 export const memberStatusLabels: Record<MemberStatus, string> = {
   active: "Actif",
-  former: "Ancien membre",
+  former: "Archivé",
   suspended: "Suspendu",
   deceased: "Décédé",
 };

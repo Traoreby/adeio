@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
+import { issueMemberToken } from "@/lib/member-qr-crypto";
 import { getSiteBaseUrl } from "@/lib/site-url";
 
 const announcementSchema = z.object({
@@ -64,6 +65,35 @@ export async function setFinancialReceiptThresholdAction(formData: FormData) {
   redirect("/admin/parametres?statut=seuil-justificatif-enregistre");
 }
 
+export async function enableMemberLifecycleAction() {
+  const { supabase, user, roles } = await getSignedInUser();
+  if (!supabase || !user) redirect("/connexion?next=%2Fadmin%2Fparametres");
+  if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Fparametres");
+  const { error } = await supabase.rpc("enable_member_lifecycle");
+  if (error) redirect(`/admin/parametres?erreur=${encodeURIComponent(error.code === "23514" ? "annees-sortie-a-corriger" : "activation-archivage-impossible")}`);
+  revalidatePath("/admin/parametres");
+  revalidatePath("/admin/membres");
+  revalidatePath("/admin/archives");
+  revalidatePath("/membres");
+  revalidatePath("/archives");
+  redirect("/admin/parametres?statut=archivage-automatique-active");
+}
+
+export async function pauseMemberLifecycleAction() {
+  const { supabase, user, roles } = await getSignedInUser();
+  if (!supabase || !user) redirect("/connexion?next=%2Fadmin%2Fparametres");
+  if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Fparametres");
+  const { error } = await supabase.from("settings").upsert({
+    key: "member_lifecycle_enforced", value: { enabled: false }, updated_by: user.id,
+  });
+  if (error) redirect("/admin/parametres?erreur=activation-archivage-impossible");
+  revalidatePath("/admin/parametres");
+  revalidatePath("/membres");
+  redirect("/admin/parametres?statut=archivage-automatique-pause");
+}
+
 export async function inviteMemberAccountAction(formData: FormData) {
   const { supabase, user, roles } = await getSignedInUser();
   if (!supabase || !user) redirect("/connexion?next=/admin/utilisateurs");
@@ -78,13 +108,131 @@ export async function inviteMemberAccountAction(formData: FormData) {
   if (!serviceClient) redirect("/admin/utilisateurs?erreur=cle-serveur-manquante");
   const siteUrl = await getSiteBaseUrl();
   if (!siteUrl) redirect("/admin/utilisateurs?erreur=url-site-manquante");
-  const { error } = await serviceClient.auth.admin.inviteUserByEmail(parsed.data.email, {
+  const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(parsed.data.email, {
     redirectTo: `${siteUrl}/auth/callback?next=/mot-de-passe`,
     data: { display_name: parsed.data.displayName },
   });
   if (error) redirect(`/admin/utilisateurs?erreur=${encodeURIComponent(error.code === "email_exists" ? "email-deja-utilise" : "invitation-impossible")}`);
+  if (!data.user) redirect("/admin/utilisateurs?erreur=invitation-impossible");
+  const { error: onboardingError } = await serviceClient.from("member_onboarding").upsert({
+    user_id: data.user.id,
+    kind: "new_member",
+    status: "pending",
+    initiated_by: user.id,
+  }, { onConflict: "user_id" });
+  if (onboardingError) redirect("/admin/utilisateurs?erreur=dossier-invitation-impossible");
   revalidatePath("/admin/utilisateurs");
   redirect("/admin/utilisateurs?statut=invitation-envoyee");
+}
+
+async function sendExistingMemberAccessEmail(supabase: NonNullable<Awaited<ReturnType<typeof import("@/lib/supabase/server").createSupabaseServerClient>>>, userId: string) {
+  const serviceClient = createSupabaseServiceClient();
+  if (!serviceClient) return "service-serveur-manquant";
+  const { data, error } = await serviceClient.auth.admin.getUserById(userId);
+  const email = data.user?.email;
+  if (error || !email) return "compte-email-introuvable";
+  const siteUrl = await getSiteBaseUrl();
+  if (!siteUrl) return "url-site-manquante";
+  const callback = `${siteUrl}/auth/callback?next=/mot-de-passe`;
+  if (!data.user.email_confirmed_at) {
+    const { error: resendError } = await supabase.auth.resend({ type: "signup", email, options: { emailRedirectTo: callback } });
+    return resendError ? "envoi-email-impossible" : null;
+  }
+  const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: callback });
+  return recoveryError ? "envoi-email-impossible" : null;
+}
+
+export async function resendMemberAccessEmailAction(formData: FormData) {
+  const requestedPath = toStringValue(formData, "return_to");
+  const memberReturnPath = /^\/admin\/membres\/[0-9a-f-]{36}$/i.test(requestedPath) ? requestedPath : null;
+  const redirectPath = memberReturnPath ?? "/admin/utilisateurs";
+  const { supabase, user, roles } = await getSignedInUser();
+  if (!supabase || !user) redirect(`/connexion?next=${encodeURIComponent(redirectPath)}`);
+  if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect(`/auth/mfa?next=${encodeURIComponent(redirectPath)}`);
+  const target = z.string().uuid().safeParse(toStringValue(formData, "user_id"));
+  if (!target.success) redirect(`${redirectPath}?erreur=compte-introuvable`);
+  const error = await sendExistingMemberAccessEmail(supabase, target.data);
+  if (error) redirect(`${redirectPath}?erreur=${memberReturnPath ? `reactivation-email-${error}` : error}`);
+  revalidatePath("/admin/utilisateurs");
+  redirect(`${redirectPath}?statut=${memberReturnPath ? "instructions-renvoyees" : "email-acces-renvoye"}`);
+}
+
+export async function changeAuthEmailAction(formData: FormData) {
+  const { supabase, user, roles } = await getSignedInUser();
+  if (!supabase || !user) redirect("/connexion?next=/admin/utilisateurs");
+  if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Futilisateurs");
+  const parsed = z.object({ userId: idSchema, newEmail: z.string().trim().email().max(254) }).safeParse({
+    userId: toStringValue(formData, "user_id"),
+    newEmail: toStringValue(formData, "new_email"),
+  });
+  if (!parsed.success) redirect("/admin/utilisateurs?erreur=formulaire-invalide");
+  const serviceClient = createSupabaseServiceClient();
+  if (!serviceClient) redirect("/admin/utilisateurs?erreur=service-serveur-manquant");
+  const { data: target, error: findError } = await serviceClient.auth.admin.getUserById(parsed.data.userId);
+  if (findError || !target.user?.email) redirect("/admin/utilisateurs?erreur=compte-introuvable");
+  if (target.user.id === user.id) redirect("/admin/utilisateurs?erreur=utilisez-profil-securite");
+  const oldEmail = target.user.email;
+  if (oldEmail.toLowerCase() === parsed.data.newEmail.toLowerCase()) redirect("/admin/utilisateurs?erreur=email-identique");
+  const { error } = await serviceClient.auth.admin.updateUserById(parsed.data.userId, { email: parsed.data.newEmail });
+  if (error) redirect(`/admin/utilisateurs?erreur=${encodeURIComponent(error.code === "email_exists" ? "email-deja-utilise" : "changement-email-impossible")}`);
+  await serviceClient.from("audit_log").insert({
+    actor_id: user.id,
+    action: "UPDATE",
+    target_table: "auth.users",
+    target_id: parsed.data.userId,
+    before_value: { email: oldEmail },
+    after_value: { email: parsed.data.newEmail, confirmation_required: true },
+  });
+  revalidatePath("/admin/utilisateurs");
+  revalidatePath("/admin/membres");
+  redirect("/admin/utilisateurs?statut=changement-email-demarre");
+}
+
+export async function startMemberReactivationAction(formData: FormData) {
+  const id = z.string().uuid().safeParse(toStringValue(formData, "member_id"));
+  if (!id.success) redirect("/admin/archives?erreur=membre-introuvable");
+  const { supabase, user, roles } = await getSignedInUser();
+  if (!supabase || !user) redirect(`/connexion?next=${encodeURIComponent(`/admin/membres/${id.data}`)}`);
+  if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect(`/auth/mfa?next=${encodeURIComponent(`/admin/membres/${id.data}`)}`);
+  const { data: linkedUser, error } = await supabase.rpc("start_member_reactivation", { p_member_id: id.data });
+  if (error || !linkedUser) redirect(`/admin/membres/${id.data}?erreur=reactivation-impossible`);
+  const emailError = await sendExistingMemberAccessEmail(supabase, linkedUser);
+  revalidatePath(`/admin/membres/${id.data}`);
+  revalidatePath("/admin/archives");
+  redirect(emailError
+    ? `/admin/membres/${id.data}?erreur=reactivation-email-${emailError}`
+    : `/admin/membres/${id.data}?statut=reactivation-demarree`);
+}
+
+export async function confirmMemberReactivationAction(formData: FormData) {
+  const id = z.string().uuid().safeParse(toStringValue(formData, "member_id"));
+  if (!id.success) redirect("/admin/archives?erreur=membre-introuvable");
+  const { supabase, user, roles } = await getSignedInUser();
+  if (!supabase || !user) redirect(`/connexion?next=${encodeURIComponent(`/admin/membres/${id.data}`)}`);
+  if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect(`/auth/mfa?next=${encodeURIComponent(`/admin/membres/${id.data}`)}`);
+  let token: ReturnType<typeof issueMemberToken>;
+  try { token = issueMemberToken(); }
+  catch { redirect(`/admin/membres/${id.data}?erreur=cle-chiffrement-qr-manquante`); }
+  const { error } = await supabase.rpc("confirm_member_reactivation", {
+    p_member_id: id.data,
+    p_token_hash: token.tokenHash,
+    p_encrypted_token: token.encryptedToken,
+    p_nonce: token.nonce,
+    p_tag: token.tag,
+    p_key_version: token.keyVersion,
+  });
+  if (error) redirect(`/admin/membres/${id.data}?erreur=reactivation-impossible`);
+  revalidatePath(`/admin/membres/${id.data}`);
+  revalidatePath("/admin/membres");
+  revalidatePath("/admin/archives");
+  revalidatePath("/membres");
+  revalidatePath("/archives");
+  revalidatePath("/verification");
+  redirect(`/admin/membres/${id.data}?statut=membre-reactive-qr-emis`);
 }
 
 export async function assignUserRoleAction(formData: FormData) {

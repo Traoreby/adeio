@@ -1,9 +1,7 @@
-import { createHash, randomBytes } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
-import QRCode from "qrcode";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
-import { getSiteBaseUrl } from "@/lib/site-url";
+import { issueMemberToken } from "@/lib/member-qr-crypto";
 
 export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
@@ -15,16 +13,19 @@ export async function POST(request: NextRequest) {
   if (!supabase || !user) return NextResponse.json({ error: "Connectez-vous pour continuer." }, { status: 401 });
   if (!roles.some((role) => role === "admin" || role === "super_admin")) return NextResponse.json({ error: "Accès réservé à l’administration." }, { status: 403 });
   if (!await hasRequiredMfa(supabase, user.id)) return NextResponse.json({ error: "Validez votre authentification à deux facteurs." }, { status: 403 });
-  const { data: member, error: memberError } = await supabase.from("members").select("id,member_number").eq("id", parsed.data.memberId).maybeSingle();
+  const { data: member, error: memberError } = await supabase.from("members").select("id").eq("id", parsed.data.memberId).maybeSingle();
   if (memberError || !member) return NextResponse.json({ error: "Membre introuvable." }, { status: 404 });
-
-  const token = randomBytes(32).toString("hex");
-  const tokenHash = createHash("sha256").update(token).digest("hex");
-  const { error } = await supabase.rpc("rotate_member_qr_tokens", { p_items: [{ member_id: member.id, token_hash: tokenHash }] });
-  if (error) return NextResponse.json({ error: "Le QR Code n’a pas pu être émis. Appliquez la migration Phase 2." }, { status: 503 });
-  const baseUrl = await getSiteBaseUrl();
-  if (!baseUrl) return NextResponse.json({ error: "L’URL publique du site n’est pas configurée." }, { status: 503 });
-  const verificationUrl = `${baseUrl}/verification/${token}`;
-  const image = await QRCode.toDataURL(verificationUrl, { width: 280, margin: 2, errorCorrectionLevel: "M" });
-  return NextResponse.json({ verificationUrl, image, memberNumber: member.member_number });
+  let token: ReturnType<typeof issueMemberToken>;
+  try { token = issueMemberToken(); }
+  catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "La clé de chiffrement QR manque." }, { status: 503 }); }
+  const { error } = await supabase.rpc("issue_member_qr", {
+    p_member_id: member.id,
+    p_token_hash: token.tokenHash,
+    p_encrypted_token: token.encryptedToken,
+    p_nonce: token.nonce,
+    p_tag: token.tag,
+    p_key_version: token.keyVersion,
+  });
+  if (error) return NextResponse.json({ error: error.message.includes("active") ? "Seul un membre actif avec un profil à jour peut recevoir une carte." : "Le QR Code n’a pas pu être émis. Vérifiez la migration et la clé de chiffrement." }, { status: 503 });
+  return NextResponse.json({ ok: true, message: "QR émis. Le téléchargement de la carte se fait séparément." });
 }

@@ -4,14 +4,16 @@ import { useState } from "react";
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { normalizeMemberHeader } from "@/lib/members";
 
-type MemberRow = { firstName: string; lastName: string; joinedYear: number | string; exitYear: number | string | null; status: string; email: string; phone: string };
+type MemberRow = { firstName: string; lastName: string; joinedYear: number | string; exitYear: number | string | null; status: string; phone: string; studyProgram: string; institution: string; sex: string };
 type ImportReport = { row: number; ok: boolean; message: string };
 
 const aliases: Record<string, keyof MemberRow> = {
   nom: "lastName", nom_de_famille: "lastName", last_name: "lastName", surname: "lastName",
   prenoms: "firstName", prenom: "firstName", first_name: "firstName", given_name: "firstName",
   annee_entree: "joinedYear", annee_adhesion: "joinedYear", joined_year: "joinedYear", entry_year: "joinedYear",
-  annee_sortie: "exitYear", exit_year: "exitYear", telephone: "phone", phone: "phone", email: "email", e_mail: "email",
+  annee_sortie: "exitYear", exit_year: "exitYear", telephone: "phone", phone: "phone",
+  filiere: "studyProgram", study_program: "studyProgram", institution: "institution", etablissement: "institution",
+  sexe: "sex", sex: "sex",
   statut: "status", status: "status",
 };
 
@@ -40,7 +42,7 @@ function toMemberRows(data: unknown[][]): MemberRow[] {
   const [headerRow = [], ...dataRows] = data;
   const mapped = headerRow.map((header) => aliases[normalizeMemberHeader(header)]);
   return dataRows.filter((row) => row.some((cell) => cell !== null && String(cell).trim() !== "")).map((values) => {
-    const item: MemberRow = { firstName: "", lastName: "", joinedYear: "", exitYear: null, status: "active", email: "", phone: "" };
+    const item: MemberRow = { firstName: "", lastName: "", joinedYear: "", exitYear: null, status: "active", phone: "", studyProgram: "", institution: "KIIT University", sex: "" };
     mapped.forEach((key, index) => {
       if (!key) return;
       const raw = values[index];
@@ -57,9 +59,12 @@ function toMemberRows(data: unknown[][]): MemberRow[] {
 function validationMessage(row: MemberRow) {
   if (!row.firstName || !row.lastName) return "Nom et prénoms obligatoires.";
   if (!Number.isInteger(Number(row.joinedYear)) || Number(row.joinedYear) < 1900 || Number(row.joinedYear) > 2200) return "Année d’entrée invalide.";
-  if (row.exitYear && (!Number.isInteger(Number(row.exitYear)) || Number(row.exitYear) < Number(row.joinedYear))) return "Année de sortie invalide.";
+  if (!Number.isInteger(Number(row.exitYear)) || Number(row.exitYear) < Number(row.joinedYear)) return "Année de sortie obligatoire et invalide.";
+  if (row.status === "active" && Number(row.exitYear) <= new Date().getFullYear()) return "L’année de sortie d’un membre actif doit être future.";
+  if (!row.studyProgram || !row.institution || row.studyProgram.length < 2 || row.institution.length < 2) return "Filière et établissement obligatoires.";
+  if (!/^\+?[0-9() .-]{6,40}$/.test(row.phone)) return "Téléphone obligatoire et invalide.";
+  if (!["female", "male", "other", "prefer_not_to_say"].includes(row.sex)) return "Sexe obligatoire : female, male, other ou prefer_not_to_say.";
   if (!["active", "former", "suspended", "deceased"].includes(row.status)) return "Statut invalide.";
-  if (row.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(row.email)) return "Adresse e-mail invalide.";
   return "";
 }
 
@@ -105,7 +110,7 @@ export function MemberImportForm() {
     <div className="admin-import-top"><div><strong><FileSpreadsheet size={17} /> Importer depuis Excel ou CSV</strong><p>Un aperçu et les erreurs sont affichés avant la validation. Maximum 250 lignes.</p></div><a href="/templates/adeio-members-template.csv" download className="text-link">Télécharger le modèle CSV</a></div>
     <label className="admin-import-picker"><Upload size={17} /><span>Sélectionner un fichier .xlsx ou .csv</span><input type="file" accept=".xlsx,.csv" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
     {error && <p role="alert" className="import-error">{error}</p>}
-    {rows.length > 0 && <><div className="import-summary" role="status">{rows.length} ligne(s) · {invalidCount} erreur(s) à corriger dans le fichier avant import</div><div className="member-table-scroll"><table className="member-table"><thead><tr><th>Ligne</th><th>Nom</th><th>Prénoms</th><th>Entrée</th><th>Sortie</th><th>Statut</th><th>Validation</th></tr></thead><tbody>{rows.slice(0, 20).map((row, index) => <tr key={index}><td>{index + 2}</td><td>{row.lastName}</td><td>{row.firstName}</td><td>{row.joinedYear}</td><td>{row.exitYear || "—"}</td><td>{row.status}</td><td>{validationMessage(row) || "Prêt"}</td></tr>)}</tbody></table></div>{rows.length > 20 && <small>Les {rows.length} lignes seront importées ; aperçu des 20 premières.</small>}<button className="admin-submit" disabled={loading || invalidCount > 0} onClick={() => void importRows()} type="button">{loading ? "Import en cours…" : `Importer ${rows.length} membre(s)`}</button></>}
+    {rows.length > 0 && <><div className="import-summary" role="status">{rows.length} ligne(s) · {invalidCount} erreur(s) à corriger dans le fichier avant import</div><div className="member-table-scroll"><table className="member-table"><thead><tr><th>Ligne</th><th>Nom</th><th>Prénoms</th><th>Entrée</th><th>Sortie</th><th>Filière</th><th>Établissement</th><th>Statut</th><th>Validation</th></tr></thead><tbody>{rows.slice(0, 20).map((row, index) => <tr key={index}><td>{index + 2}</td><td>{row.lastName}</td><td>{row.firstName}</td><td>{row.joinedYear}</td><td>{row.exitYear || "—"}</td><td>{row.studyProgram}</td><td>{row.institution}</td><td>{row.status}</td><td>{validationMessage(row) || "Prêt"}</td></tr>)}</tbody></table></div>{rows.length > 20 && <small>Les {rows.length} lignes seront importées ; aperçu des 20 premières.</small>}<button className="admin-submit" disabled={loading || invalidCount > 0} onClick={() => void importRows()} type="button">{loading ? "Import en cours…" : `Importer ${rows.length} membre(s)`}</button></>}
     {report && <div className="import-report" role="status"><strong>Rapport d’import : {report.filter((item) => item.ok).length} importé(s), {report.filter((item) => !item.ok).length} erreur(s).</strong><ul>{report.map((item) => <li className={item.ok ? "import-ok" : "import-fail"} key={item.row}>Ligne {item.row} — {item.message}</li>)}</ul></div>}
   </div>;
 }

@@ -18,7 +18,7 @@ export function MemberCardBatchForm({ members }: { members: { id: string; full_n
       const blob = await response.blob();
       const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
       anchor.href = url; anchor.download = "cartes-membres-adeio.pdf"; anchor.click(); URL.revokeObjectURL(url);
-      setMessage(`${selected.length} carte(s) générée(s). Les anciens QR associés ont été désactivés.`);
+      setMessage(`${selected.length} carte(s) générée(s). Les QR actifs ont été réutilisés sans être renouvelés.`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Une erreur est survenue."); }
     finally { setBusy(false); }
   }
