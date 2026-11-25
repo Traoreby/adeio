@@ -23,6 +23,7 @@ enable_signup = false
 [auth.email]
 enable_signup = false
 double_confirm_changes = true
+secure_email_change = true
 enable_confirmations = true
 
 [storage]

@@ -63,7 +63,7 @@ function validationMessage(row: MemberRow) {
   if (row.status === "active" && Number(row.exitYear) <= new Date().getFullYear()) return "L’année de sortie d’un membre actif doit être future.";
   if (!row.studyProgram || !row.institution || row.studyProgram.length < 2 || row.institution.length < 2) return "Filière et établissement obligatoires.";
   if (!/^\+?[0-9() .-]{6,40}$/.test(row.phone)) return "Téléphone obligatoire et invalide.";
-  if (!["female", "male", "other", "prefer_not_to_say"].includes(row.sex)) return "Sexe obligatoire : female, male, other ou prefer_not_to_say.";
+  if (!["female", "male"].includes(row.sex)) return "Sexe obligatoire : female ou male.";
   if (!["active", "former", "suspended", "deceased"].includes(row.status)) return "Statut invalide.";
   return "";
 }

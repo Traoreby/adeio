@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
+import { createSupabaseServiceClient } from "@/lib/supabase/service";
+import { getSiteBaseUrl } from "@/lib/site-url";
 
 const memberSchema = z.object({
   firstName: z.string().trim().min(1).max(100),
@@ -13,7 +15,7 @@ const memberSchema = z.object({
   exitYear: z.preprocess((value) => value === "" ? Number.NaN : Number(value), z.number().int().min(1900).max(2200)),
   studyProgram: z.string().trim().min(2).max(160),
   institution: z.string().trim().min(2).max(200),
-  sex: z.enum(["female", "male", "other", "prefer_not_to_say"]),
+  sex: z.enum(["female", "male", "other", "prefer_not_to_say"]).or(z.literal("")),
   status: z.enum(["active", "former", "suspended", "deceased"]),
   phone: z.string().trim().min(6).max(40),
   userId: z.union([z.string().uuid(), z.literal("")]).optional(),
@@ -68,46 +70,141 @@ async function nextMemberNumber(supabase: NonNullable<Awaited<ReturnType<typeof 
   throw new Error("Impossible de générer un numéro membre unique.");
 }
 
-export async function createMemberAction(formData: FormData) {
-  const { supabase } = await adminContext("/admin/membres/nouveau");
-  const parsed = parseMember(formData);
-  const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
-  if (!parsed.success || parsed.data.exitYear < parsed.data.joinedYear
-    || (parsed.data.status === "active" && parsed.data.exitYear <= currentYear)) redirect("/admin/membres/nouveau?erreur=formulaire-invalide");
-  const input = parsed.data;
-  if (input.userId) {
-    const { data: onboarding } = await supabase.from("member_onboarding").select("kind").eq("user_id", input.userId).maybeSingle();
-    if (onboarding?.kind === "reactivation") redirect("/admin/membres/nouveau?erreur=compte-en-reactivation");
-  }
-  const photo = await validMemberPhoto(formData.get("photo"));
-  if (photo === false) redirect("/admin/membres/nouveau?erreur=photo-invalide");
-  let memberNumber: string;
-  try { memberNumber = await nextMemberNumber(supabase, input.joinedYear); }
-  catch { redirect("/admin/membres/nouveau?erreur=numero-impossible"); }
+export type CreateMemberState = { error?: string; confirmExisting?: boolean; email?: string };
 
-  const { data: memberId, error } = await supabase.rpc("admin_create_member", {
-    p_member_number: memberNumber, p_first_name: input.firstName, p_last_name: input.lastName,
-    p_joined_year: input.joinedYear, p_exit_year: input.exitYear, p_study_program: input.studyProgram,
-    p_institution: input.institution, p_phone: input.phone, p_sex: input.sex, p_status: input.status,
-    p_user_id: input.userId || null, p_photo_public_consent: input.photoConsent,
+const integratedMemberSchema = z.object({
+  email: z.string().trim().email().max(254),
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
+  joinedYear: z.coerce.number().int().min(1900).max(2200),
+  attachExisting: z.boolean(),
+});
+
+async function findAuthUserByEmail(service: NonNullable<ReturnType<typeof createSupabaseServiceClient>>, email: string) {
+  const normalizedEmail = email.toLowerCase();
+  for (let page = 1; page <= 20; page += 1) {
+    const { data, error } = await service.auth.admin.listUsers({ page, perPage: 500 });
+    if (error) throw new Error("comptes-indisponibles");
+    const match = data.users.find((account) => account.email?.toLowerCase() === normalizedEmail);
+    if (match) return match;
+    if (data.users.length < 500) return null;
+  }
+  throw new Error("recherche-comptes-trop-volumineuse");
+}
+
+function memberCreationError(error: string): CreateMemberState {
+  const messages: Record<string, string> = {
+    "comptes-indisponibles": "Impossible de vérifier les comptes existants. Réessayez dans un instant.",
+    "recherche-comptes-trop-volumineuse": "La recherche de compte a atteint sa limite. Contactez le Super Admin pour rattacher ce dossier.",
+    "numero-indisponible": "Le numéro ADEIO n’a pas pu être attribué. Réessayez.",
+    "compte-ineligible": "Ce compte possède déjà une fiche, une réactivation en cours ou un rôle sensible. Aucun changement n’a été effectué.",
+    "compte-deja-lie": "Cette adresse est déjà rattachée à une fiche membre. Ouvrez cette fiche pour la gérer.",
+    "invitation-impossible": "L’invitation n’a pas pu être envoyée. Vérifiez la configuration e-mail de Supabase.",
+    "fiche-impossible": "La fiche n’a pas pu être créée. Si un compte vient d’être invité, il a été annulé automatiquement ; vérifiez l’état avant de réessayer.",
+    "compensation-impossible": "La fiche n’a pas pu être créée et le compte provisoire n’a pas pu être annulé automatiquement. Ne relancez pas l’invitation ; contactez le Super Admin pour vérifier ce compte.",
+    "email-envoi-secondaire": "La fiche est créée et liée au compte existant, mais l’e-mail n’a pas été envoyé. Utilisez « Renvoyer les instructions » dans Utilisateurs et rôles.",
+  };
+  return { error: messages[error] ?? "La création n’a pas abouti. Vérifiez les informations puis réessayez." };
+}
+
+export async function createIntegratedMemberAction(_previous: CreateMemberState, formData: FormData): Promise<CreateMemberState> {
+  const { supabase, user, roles } = await getSignedInUser();
+  if (!supabase || !user) redirect("/connexion?next=%2Fadmin%2Fmembres%2Fnouveau");
+  if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Fmembres%2Fnouveau");
+
+  const parsed = integratedMemberSchema.safeParse({
+    email: formData.get("email"),
+    firstName: formData.get("first_name"),
+    lastName: formData.get("last_name"),
+    joinedYear: formData.get("joined_year"),
+    attachExisting: formData.get("attach_existing") === "1",
   });
-  if (error || !memberId) redirect(`/admin/membres/nouveau?erreur=${encodeURIComponent(error?.code === "23505" ? "numero-existant" : "creation-impossible")}`);
-
-  if (photo) {
-    const storagePath = `${memberId}/${randomUUID()}.${photo.type === "image/webp" ? "webp" : "jpg"}`;
-    const { error: photoUploadError } = await supabase.storage.from("member-photos").upload(storagePath, photo, { contentType: photo.type, upsert: false });
-    if (photoUploadError) redirect(`/admin/membres/${memberId}?erreur=photo-impossible`);
-    const { error: photoLinkError } = await supabase.from("members").update({ photo_path: storagePath }).eq("id", memberId);
-    if (photoLinkError) {
-      await supabase.storage.from("member-photos").remove([storagePath]);
-      redirect(`/admin/membres/${memberId}?erreur=photo-impossible`);
-    }
+  const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
+  if (!parsed.success || parsed.data.joinedYear > currentYear) return { error: "Vérifiez le nom, l’adresse e-mail et l’année d’adhésion." };
+  const confirmedEmail = value(formData, "confirmed_email").trim().toLowerCase();
+  if (parsed.data.attachExisting && confirmedEmail !== parsed.data.email.toLowerCase()) {
+    return { error: "L’adresse a changé depuis la vérification. Relancez la recherche puis confirmez le compte affiché." };
   }
+
+  const service = createSupabaseServiceClient();
+  if (!service) return { error: "Le service serveur Supabase n’est pas configuré. Contactez le Super Admin." };
+  const email = parsed.data.email.toLowerCase();
+  let existing: Awaited<ReturnType<typeof findAuthUserByEmail>>;
+  try { existing = await findAuthUserByEmail(service, email); }
+  catch (error) { return memberCreationError(error instanceof Error ? error.message : "comptes-indisponibles"); }
+
+  if (existing) {
+    const [{ data: linked }, { data: currentRoles }, { data: onboarding }] = await Promise.all([
+      service.from("members").select("id").eq("user_id", existing.id).maybeSingle(),
+      service.from("user_roles").select("role").eq("user_id", existing.id),
+      service.from("member_onboarding").select("kind,status,member_id").eq("user_id", existing.id).maybeSingle(),
+    ]);
+    const roleList = (currentRoles ?? []).map((row) => row.role);
+    if (linked) return memberCreationError("compte-deja-lie");
+    if (roleList.some((role) => role !== "member") || (onboarding && (onboarding.kind !== "new_member" || onboarding.status !== "pending" || onboarding.member_id))) return memberCreationError("compte-ineligible");
+    if (!parsed.data.attachExisting) return { confirmExisting: true, email: existing.email ?? email };
+  }
+  if (!existing && parsed.data.attachExisting) return { error: "Le compte n’est plus disponible. Vérifiez l’adresse et recommencez." };
+
+  let userId: string;
+  let newlyInvited = false;
+  if (existing) {
+    userId = existing.id;
+  } else {
+    const siteUrl = await getSiteBaseUrl();
+    if (!siteUrl) return { error: "Configurez NEXT_PUBLIC_SITE_URL avant l’envoi des invitations." };
+    const { data, error } = await service.auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${siteUrl}/auth/callback?next=/mot-de-passe`,
+      data: { display_name: `${parsed.data.firstName} ${parsed.data.lastName}` },
+    });
+    if (error || !data.user) {
+      if (data.user) {
+        const { error: cleanupError } = await service.auth.admin.deleteUser(data.user.id);
+        if (cleanupError) return memberCreationError("compensation-impossible");
+      }
+      if (error?.code === "email_exists") return { confirmExisting: true, email };
+      return memberCreationError("invitation-impossible");
+    }
+    userId = data.user.id;
+    newlyInvited = true;
+  }
+
+  const { data: memberId, error: createError } = await service.rpc("admin_register_member_invitation", {
+    p_user_id: userId,
+    p_first_name: parsed.data.firstName,
+    p_last_name: parsed.data.lastName,
+    p_joined_year: parsed.data.joinedYear,
+    p_actor_id: user.id,
+  });
+  if (createError || !memberId) {
+    if (newlyInvited) {
+      const { error: cleanupError } = await service.auth.admin.deleteUser(userId);
+      if (cleanupError) return memberCreationError("compensation-impossible");
+    }
+    if (createError?.code === "54000") return memberCreationError("numero-indisponible");
+    if (createError?.code === "23505") return memberCreationError("compte-deja-lie");
+    return memberCreationError("fiche-impossible");
+  }
+
+  if (existing) {
+    const siteUrl = await getSiteBaseUrl();
+    const callback = siteUrl ? `${siteUrl}/auth/callback?next=/mot-de-passe` : null;
+    let emailError = !callback;
+    if (callback && !existing.email_confirmed_at && existing.email) {
+      const { error } = await supabase.auth.resend({ type: "signup", email: existing.email, options: { emailRedirectTo: callback } });
+      emailError = Boolean(error);
+    } else if (callback && existing.email) {
+      const { error } = await supabase.auth.resetPasswordForEmail(existing.email, { redirectTo: callback });
+      emailError = Boolean(error);
+    }
+    if (emailError) return memberCreationError("email-envoi-secondaire");
+  }
+
   revalidatePath("/admin/membres");
-  revalidatePath("/admin/archives");
+  revalidatePath("/admin/utilisateurs");
   revalidatePath("/membres");
   revalidatePath("/archives");
-  revalidatePath("/");
   redirect(`/admin/membres/${memberId}?statut=membre-cree`);
 }
 
@@ -129,10 +226,13 @@ export async function updateMemberAction(formData: FormData) {
     const { data: onboarding } = await supabase.from("member_onboarding").select("kind").eq("user_id", input.userId).maybeSingle();
     if (onboarding?.kind === "reactivation") redirect(`${nextPath}?erreur=compte-en-reactivation`);
   }
+  const { data: existingDetails } = await supabase.from("member_private_details").select("sex").eq("member_id", id).maybeSingle();
+  const sex = input.sex || existingDetails?.sex;
+  if (!sex) redirect(`${nextPath}?erreur=formulaire-invalide`);
   const { error } = await supabase.rpc("admin_update_member_profile", {
     p_member_id: id, p_first_name: input.firstName, p_last_name: input.lastName, p_exit_year: input.exitYear,
     p_study_program: input.studyProgram, p_institution: input.institution, p_phone: input.phone,
-    p_sex: input.sex, p_status: input.status, p_user_id: input.userId || null,
+    p_sex: sex, p_status: input.status, p_user_id: input.userId || null,
     p_photo_public_consent: input.photoConsent,
   });
   if (error) redirect(`${nextPath}?erreur=${encodeURIComponent(error.code === "42501" ? "utiliser-reactivation" : "modification-impossible")}`);

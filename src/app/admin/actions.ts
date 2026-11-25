@@ -23,6 +23,33 @@ function toStringValue(formData: FormData, field: string) {
 
 const idSchema = z.string().uuid();
 
+function escapeHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
+}
+
+async function sendEmailChangeConfirmation(to: string, newEmail: string, actionLink: string, audience: "current" | "new") {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.ADEIO_AUTH_FROM_EMAIL?.trim();
+  if (!apiKey || !from) return "email-provider-manquant";
+  const isCurrent = audience === "current";
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject: isCurrent ? "Confirmez le changement d’adresse ADEIO" : "Confirmez votre nouvelle adresse ADEIO",
+        html: `<p>Une demande de changement d’adresse e-mail a été faite pour votre compte ADEIO.</p><p>Nouvelle adresse demandée : <strong>${escapeHtml(newEmail)}</strong></p><p><a href="${escapeHtml(actionLink)}">${isCurrent ? "Autoriser la demande" : "Confirmer la nouvelle adresse"}</a></p><p>Votre adresse ne changera qu’après les confirmations requises par Supabase. Si vous n’êtes pas à l’origine de cette demande, ignorez ce message et contactez l’administration ADEIO.</p>`,
+      }),
+      cache: "no-store",
+    });
+    return response.ok ? null : "envoi-confirmation-impossible";
+  } catch {
+    return "envoi-confirmation-impossible";
+  }
+}
+
 export async function setFormerMembersVisibilityAction(formData: FormData) {
   const { supabase, user, roles } = await getSignedInUser();
   if (!supabase || !user) redirect("/connexion?next=/admin/parametres");
@@ -94,37 +121,6 @@ export async function pauseMemberLifecycleAction() {
   redirect("/admin/parametres?statut=archivage-automatique-pause");
 }
 
-export async function inviteMemberAccountAction(formData: FormData) {
-  const { supabase, user, roles } = await getSignedInUser();
-  if (!supabase || !user) redirect("/connexion?next=/admin/utilisateurs");
-  if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
-  if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Futilisateurs");
-  const parsed = z.object({ email: z.string().trim().email().max(254), displayName: z.string().trim().min(2).max(120) }).safeParse({
-    email: toStringValue(formData, "email"),
-    displayName: toStringValue(formData, "display_name"),
-  });
-  if (!parsed.success) redirect("/admin/utilisateurs?erreur=formulaire-invalide");
-  const serviceClient = createSupabaseServiceClient();
-  if (!serviceClient) redirect("/admin/utilisateurs?erreur=cle-serveur-manquante");
-  const siteUrl = await getSiteBaseUrl();
-  if (!siteUrl) redirect("/admin/utilisateurs?erreur=url-site-manquante");
-  const { data, error } = await serviceClient.auth.admin.inviteUserByEmail(parsed.data.email, {
-    redirectTo: `${siteUrl}/auth/callback?next=/mot-de-passe`,
-    data: { display_name: parsed.data.displayName },
-  });
-  if (error) redirect(`/admin/utilisateurs?erreur=${encodeURIComponent(error.code === "email_exists" ? "email-deja-utilise" : "invitation-impossible")}`);
-  if (!data.user) redirect("/admin/utilisateurs?erreur=invitation-impossible");
-  const { error: onboardingError } = await serviceClient.from("member_onboarding").upsert({
-    user_id: data.user.id,
-    kind: "new_member",
-    status: "pending",
-    initiated_by: user.id,
-  }, { onConflict: "user_id" });
-  if (onboardingError) redirect("/admin/utilisateurs?erreur=dossier-invitation-impossible");
-  revalidatePath("/admin/utilisateurs");
-  redirect("/admin/utilisateurs?statut=invitation-envoyee");
-}
-
 async function sendExistingMemberAccessEmail(supabase: NonNullable<Awaited<ReturnType<typeof import("@/lib/supabase/server").createSupabaseServerClient>>>, userId: string) {
   const serviceClient = createSupabaseServiceClient();
   if (!serviceClient) return "service-serveur-manquant";
@@ -174,16 +170,33 @@ export async function changeAuthEmailAction(formData: FormData) {
   if (findError || !target.user?.email) redirect("/admin/utilisateurs?erreur=compte-introuvable");
   if (target.user.id === user.id) redirect("/admin/utilisateurs?erreur=utilisez-profil-securite");
   const oldEmail = target.user.email;
-  if (oldEmail.toLowerCase() === parsed.data.newEmail.toLowerCase()) redirect("/admin/utilisateurs?erreur=email-identique");
-  const { error } = await serviceClient.auth.admin.updateUserById(parsed.data.userId, { email: parsed.data.newEmail });
-  if (error) redirect(`/admin/utilisateurs?erreur=${encodeURIComponent(error.code === "email_exists" ? "email-deja-utilise" : "changement-email-impossible")}`);
+  const newEmail = parsed.data.newEmail.toLowerCase();
+  if (oldEmail.toLowerCase() === newEmail) redirect("/admin/utilisateurs?erreur=email-identique");
+  if (!process.env.RESEND_API_KEY?.trim() || !process.env.ADEIO_AUTH_FROM_EMAIL?.trim()) {
+    redirect("/admin/utilisateurs?erreur=email-provider-manquant");
+  }
+  const siteUrl = await getSiteBaseUrl();
+  if (!siteUrl) redirect("/admin/utilisateurs?erreur=url-site-manquante");
+  const redirectTo = `${siteUrl}/auth/callback?next=${encodeURIComponent("/connexion?email-change=confirmed")}`;
+  const [{ data: currentLink, error: currentLinkError }, { data: newLink, error: newLinkError }] = await Promise.all([
+    serviceClient.auth.admin.generateLink({ type: "email_change_current", email: oldEmail, newEmail, options: { redirectTo } }),
+    serviceClient.auth.admin.generateLink({ type: "email_change_new", email: oldEmail, newEmail, options: { redirectTo } }),
+  ]);
+  if (newLinkError?.code === "email_exists") redirect("/admin/utilisateurs?erreur=email-deja-utilise");
+  if (currentLinkError || newLinkError || !currentLink.properties.action_link || !newLink.properties.action_link) {
+    redirect("/admin/utilisateurs?erreur=confirmation-supabase-impossible");
+  }
+  const newAddressError = await sendEmailChangeConfirmation(newEmail, newEmail, newLink.properties.action_link, "new");
+  if (newAddressError) redirect(`/admin/utilisateurs?erreur=${newAddressError}`);
+  const currentAddressError = await sendEmailChangeConfirmation(oldEmail, newEmail, currentLink.properties.action_link, "current");
+  if (currentAddressError) redirect(`/admin/utilisateurs?erreur=${currentAddressError}`);
   await serviceClient.from("audit_log").insert({
     actor_id: user.id,
     action: "UPDATE",
     target_table: "auth.users",
     target_id: parsed.data.userId,
     before_value: { email: oldEmail },
-    after_value: { email: parsed.data.newEmail, confirmation_required: true },
+    after_value: { requested_email: newEmail, confirmation_requested: true, confirmation_required_on_current_and_new_addresses: true },
   });
   revalidatePath("/admin/utilisateurs");
   revalidatePath("/admin/membres");

@@ -898,6 +898,25 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .inline-role-form button, .admin-pagination a { min-height: 44px; padding: 9px 13px; font-size: 14px; }
 .admin-security-list { color: #46534b; font-size: 14px; line-height: 1.65; }
 .admin-setting-form span { color: #46534b; font-size: 14px; }
+.integrated-member-form .info-alert { display: grid; gap: 6px; font-size: 15px; }
+.integrated-member-form .admin-form-note { margin: 0; color: #46534b; font-size: 14px; line-height: 1.6; }
+.integrated-member-form .admin-submit { min-width: min(100%, 310px); }
+.user-account-actions { display: grid; justify-items: start; gap: 10px; min-width: 0; }
+.admin-email-change { display: grid; justify-items: start; gap: 10px; min-width: 0; width: 100%; }
+.admin-email-change > .text-action { min-height: 42px; padding: 9px 12px; border: 1px solid #a9c9b4; background: #f5faf6; font-size: 14px; white-space: normal; text-align: left; }
+.user-email-change-form { display: grid; gap: 12px; width: min(100%, 440px); padding: 16px; border: 1px solid #dbe6dd; border-radius: 14px; background: #fbfdfb; }
+.user-email-change-form label { margin: 0; color: #27342c; font-size: 14px; font-weight: 700; }
+.user-email-change-form input[type="email"] { width: 100%; min-width: 0; min-height: 48px; padding: 11px 13px; border: 1px solid #cbd6ce; border-radius: 10px; background: #fff; color: #202b24; font-size: 16px; }
+.user-email-change-form input[type="email"]:focus-visible { outline: 3px solid rgba(0,122,73,.22); border-color: #007a49; }
+.email-change-current, .email-change-preview { display: grid; gap: 4px; min-width: 0; color: #46534b; font-size: 13px; }
+.email-change-current strong, .email-change-preview strong { overflow-wrap: anywhere; color: #202b24; font-size: 14px; }
+.email-change-current { padding-bottom: 10px; border-bottom: 1px solid #e5ebe6; }
+.user-email-change-form .admin-submit { justify-self: stretch; font-size: 14px; }
+@media (max-width: 639px) {
+  .integrated-member-form .admin-form-grid { grid-template-columns: minmax(0,1fr); }
+  .user-email-change-form { width: 100%; padding: 13px; }
+  .user-account-actions { width: 100%; }
+}
 .admin-list-row small, .admin-card small { color: #4d5b52; font-size: 14px; }
 .admin-filter-form { min-width: 0; gap: 12px; }
 .admin-filter-form label { display: grid; gap: 6px; min-width: 0; color: #27342c; font-size: 14px; font-weight: 700; }

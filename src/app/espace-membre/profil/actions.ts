@@ -14,7 +14,7 @@ const profileSchema = z.object({
   studyProgram: z.string().trim().min(2).max(160),
   institution: z.string().trim().min(2).max(200),
   phone: z.string().trim().min(6).max(40),
-  sex: z.enum(["female", "male", "other", "prefer_not_to_say"]),
+  sex: z.enum(["female", "male"]).or(z.literal("")),
 });
 
 const textValue = (formData: FormData, key: string) => {
@@ -72,7 +72,7 @@ export async function saveOwnMemberProfileAction(formData: FormData) {
     p_study_program: input.studyProgram,
     p_institution: input.institution,
     p_phone: input.phone,
-    p_sex: input.sex,
+    p_sex: input.sex || null,
   });
   if (saveError || !memberId) {
     const message = saveError?.message?.includes("arrivée à échéance") ? "annee-sortie-atteinte"
