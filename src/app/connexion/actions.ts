@@ -29,9 +29,13 @@ export async function requestPasswordResetAction(input: unknown): Promise<LoginA
 
   const callbackUrl = new URL("/auth/callback", siteUrl);
   callbackUrl.searchParams.set("next", "/mot-de-passe");
+  callbackUrl.searchParams.set("flow", "recovery");
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: callbackUrl.toString(),
   });
+  if (error?.code === "over_email_send_rate_limit" || error?.code === "over_request_rate_limit") {
+    return { error: "Trop de demandes ont été envoyées. Attendez quelques minutes avant de réessayer." };
+  }
   if (error) return { error: "Le lien n’a pas pu être envoyé. Réessayez dans quelques instants." };
 
   return { sent: true };

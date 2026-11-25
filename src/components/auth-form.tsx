@@ -29,6 +29,13 @@ export function AuthForm() {
   const callbackError = {
     "lien-invalide": "Ce lien de connexion ou de récupération n’est pas valide. Demandez un nouveau lien.",
     "lien-expire": "Ce lien a expiré ou a déjà été utilisé. Demandez-en un nouveau.",
+    "verificateur-manquant": "Le lien a été ouvert dans un autre navigateur ou appareil. Demandez un nouveau lien et ouvrez-le dans le même navigateur.",
+    "code-manquant": "Le lien de récupération est incomplet. Demandez-en un nouveau.",
+    "echange-impossible": "Supabase n’a pas pu établir la session à partir de ce lien. Demandez-en un nouveau et réessayez une seule fois.",
+    "session-absente": "La session de récupération n’a pas été établie. Demandez un nouveau lien.",
+    "verification-indisponible": "La session a été créée, mais sa vérification est momentanément indisponible. Réessayez sans demander un autre lien.",
+    "trop-de-demandes": "Trop de tentatives ont été effectuées. Attendez quelques minutes puis demandez un nouveau lien.",
+    "domaine-invalide": "Ce lien a été ouvert sur un domaine non autorisé. Utilisez le site officiel ADEIO et demandez un nouveau lien.",
     "service-indisponible": "Le service de connexion est momentanément indisponible. Réessayez plus tard.",
   }[searchParams.get("erreur") ?? ""];
 
