@@ -20,7 +20,7 @@ const deletionErrors: Record<string, string> = {
   "suppression-role": "Suppression bloquée : le compte possède un rôle administratif/financier ou ses liens ne peuvent pas être vérifiés sans risque.",
   "suppression-auth": "Le compte Supabase Auth n’a pas pu être supprimé. La fiche a été conservée et son lien restauré ; vérifiez la configuration serveur puis réessayez.",
   "suppression-stockage": "Le compte a été traité, mais le stockage des photos n’a pas pu être nettoyé. La fiche est conservée pour permettre une nouvelle tentative.",
-  "suppression-partielle": "La suppression n’a pas pu être finalisée. La fiche est conservée pour permettre une reprise sécurisée ; contactez le Super Admin technique avant toute nouvelle action.",
+  "suppression-partielle": "La fiche ADEIO reste conservée, mais le compte Auth a peut-être déjà été supprimé. Après déploiement du correctif, relancez la suppression depuis cette fiche ; ne recréez pas le compte.",
   "suppression-configuration": "Le service sécurisé de suppression n’est pas configuré sur le serveur. Aucune suppression n’a été lancée.",
 };
 
