@@ -11,10 +11,10 @@ major_version = 17
 
 [auth]
 enabled = true
-site_url = "https://adeio-baba-traores-projects.vercel.app"
+site_url = "https://adeio.vercel.app"
 additional_redirect_urls = [
-  "https://adeio-baba-traores-projects.vercel.app/auth/callback",
-  "https://adeio-baba-traores-projects.vercel.app/**",
+  "https://adeio.vercel.app/auth/callback",
+  "https://adeio.vercel.app/**",
   "http://localhost:3000/auth/callback",
   "http://localhost:3000/**",
 ]

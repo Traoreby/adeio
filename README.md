@@ -27,7 +27,7 @@ Sans les variables Supabase, les pages publiques restent consultables et affiche
 |---|---:|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Oui en production | URL du projet Supabase |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Oui en production | Clé publique publishable Supabase |
-| `NEXT_PUBLIC_SITE_URL` | Oui en production | `https://adeio-baba-traores-projects.vercel.app`, utilisée pour les liens d'authentification |
+| `NEXT_PUBLIC_SITE_URL` | Oui en production | `https://adeio.vercel.app`, domaine officiel utilisé pour les liens d'authentification |
 | `SUPABASE_SECRET_KEY` | Oui pour invitations, première connexion et synchronisation MFA | Clé serveur à privilèges élevés ; la garder uniquement côté serveur, jamais sous `NEXT_PUBLIC_` |
 | `CONTACT_EMAIL` | Facultative | E-mail officiel affiché dans le pied de page et la page Contact ; valeur par défaut : `adeioinde523@gmail.com` |
 | `CONTACT_PHONE` | Facultative | Téléphone officiel affiché dans la page Contact |
@@ -55,16 +55,16 @@ Les rôles Trésorier, Commissaire aux comptes, Administrateur et Super-administ
 
 ### Configuration initiale (une seule fois)
 
-1. Dans Supabase **Project Settings → Integrations → GitHub Integration**, lier `Traoreby/adeio`, choisir `.` comme répertoire de travail et activer **Deploy to production** pour la branche `master`. L’intégration vérifie les migrations des demandes de fusion et applique les nouvelles migrations lors du déploiement de production.
+1. Dans Supabase **Project Settings → Integrations → GitHub Integration**, lier `Traoreby/adeio`, choisir `.` comme répertoire de travail et activer **Deploy to production** pour la branche `master`. L’intégration vérifie les migrations des demandes de fusion et applique les nouvelles migrations lors du déploiement de production. Si la synchronisation de configuration des branches est activée, les réglages Auth versionnés dans `supabase/config.toml` peuvent aussi être appliqués depuis Git.
 2. Dans Vercel, lier le même dépôt et choisir `master` comme branche de production. Les pushes sur cette branche déclenchent alors le déploiement Next.js.
-3. Définir les variables de production sur Vercel : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL=https://adeio-baba-traores-projects.vercel.app` et `SUPABASE_SECRET_KEY` (serveur seulement). Les clés secrètes doivent rester dans les variables Vercel et ne jamais être ajoutées au dépôt. Après modification de `NEXT_PUBLIC_SITE_URL`, redéployer le projet.
-4. Dans Supabase Auth, définir l’URL du site sur `https://adeio-baba-traores-projects.vercel.app` et autoriser `https://adeio-baba-traores-projects.vercel.app/auth/callback` ainsi que `https://adeio-baba-traores-projects.vercel.app/**`. Conserver les URL localhost uniquement pour le développement local. Ces réglages Auth doivent être vérifiés et appliqués dans le tableau de bord Supabase ; le dossier `supabase/migrations` ne les déploie pas.
+3. Définir les variables de production sur Vercel : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `NEXT_PUBLIC_SITE_URL=https://adeio.vercel.app` et `SUPABASE_SECRET_KEY` (serveur seulement). Les clés secrètes doivent rester dans les variables Vercel et ne jamais être ajoutées au dépôt. La valeur Production de `NEXT_PUBLIC_SITE_URL` doit rester le domaine officiel, jamais une URL de preview.
+4. Dans Supabase Auth, définir le Site URL sur `https://adeio.vercel.app` et autoriser `https://adeio.vercel.app/auth/callback` ainsi que `https://adeio.vercel.app/**`. Conserver les URL localhost uniquement pour le développement local. Garder `supabase/config.toml` aligné avec ces valeurs : `supabase config push` applique la configuration locale au projet lié, et la synchronisation de configuration Supabase peut aussi appliquer le fichier depuis Git selon les réglages de branches. Les migrations SQL ne gèrent pas ces paramètres Auth.
 5. Vérifier les sauvegardes quotidiennes selon le plan Supabase et effectuer régulièrement un exercice de restauration.
 
 ### Déploiements suivants
 
 1. Toute évolution SQL est ajoutée dans un nouveau fichier horodaté de `supabase/migrations/`; ne pas modifier une migration déjà appliquée et ne pas exécuter manuellement son SQL en production.
-2. Pousser ou fusionner le changement dans `master`. Vercel construit et déploie le site; l’intégration Supabase vérifie et applique les migrations de production lorsque **Deploy to production** est actif.
+2. Pousser ou fusionner le changement dans `master`. Vercel construit et déploie le site; l’intégration Supabase vérifie et applique les migrations de production lorsque **Deploy to production** est actif, et peut synchroniser `config.toml` si la synchronisation de configuration des branches est activée.
 3. Sur GitHub, vérifier le statut Vercel et celui de Supabase avant de considérer la mise à jour terminée. Ces deux opérations sont déclenchées par le même changement Git, mais s’exécutent séparément.
 
 `supabase/seed.sql` sert aux environnements locaux et de preview; il n’est pas appliqué automatiquement aux données de production. Les nouvelles configurations Auth, les variables d’environnement et les contenus métier restent des réglages distincts des migrations SQL.
