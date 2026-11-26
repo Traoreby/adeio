@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont, type PDFImage } from "pdf-lib";
 import QRCode from "qrcode";
 import sharp from "sharp";
@@ -68,7 +70,7 @@ function drawShell(page: PDFPage, x: number, y: number, cardW: number, cardH: nu
   page.drawRectangle({ x: x + cardW * 0.66, y: y + cardH - 5, width: cardW * 0.34, height: 5, color: GREEN });
 }
 
-function drawImageContained(page: PDFPage, image: PDFImage, x: number, y: number, maxWidth: number, maxHeight: number) {
+function drawImageContained(page: PDFPage, image: PDFImage, x: number, y: number, maxWidth: number, maxHeight: number, opacity = 1) {
   const scale = Math.min(maxWidth / image.width, maxHeight / image.height);
   const width = image.width * scale;
   const height = image.height * scale;
@@ -77,6 +79,7 @@ function drawImageContained(page: PDFPage, image: PDFImage, x: number, y: number
     y: y + (maxHeight - height) / 2,
     width,
     height,
+    opacity,
   });
 }
 
@@ -175,6 +178,8 @@ export async function POST(request: NextRequest) {
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const logoBytes = await readFile(join(process.cwd(), "public", "adeio-logo.jpeg"));
+  const logo = await pdf.embedJpg(logoBytes);
   const pageCount = Math.ceil(prepared.length / 8);
   for (let sheet = 0; sheet < pageCount; sheet += 1) {
     const pageMembers = prepared.slice(sheet * 8, (sheet + 1) * 8);
@@ -186,6 +191,7 @@ export async function POST(request: NextRequest) {
       const { cardW, cardH, x, y } = cardPosition(localIndex);
       drawShell(front, x, y, cardW, cardH);
       drawShell(back, x, y, cardW, cardH);
+      drawImageContained(back, logo, x + 80, y + 39, 67, 67, 0.08);
 
       front.drawText("ADEIO", { x: x + 13, y: y + cardH - 25, size: 12, font: bold, color: GREEN });
       front.drawText("CARTE DE MEMBRE", { x: x + 57, y: y + cardH - 24, size: 7, font: bold, color: DARK });
@@ -220,7 +226,7 @@ export async function POST(request: NextRequest) {
       back.drawText("Scannez le QR pour vérifier", { x: x + 14, y: y + cardH - 80, size: 5.7, font: regular, color: MUTED });
       back.drawText("l’authenticité et la validité.", { x: x + 14, y: y + cardH - 89, size: 5.7, font: regular, color: MUTED });
       back.drawText("NUMÉRO ADEIO", { x: x + 14, y: y + 55, size: 6.5, font: bold, color: GREEN });
-      back.drawText(fitText(snap.member_number, 116, bold, 9.5), { x: x + 14, y: y + 42, size: 9.5, font: bold, color: DARK });
+      back.drawText(fitText(snap.member_number, 108, bold, 9.5), { x: x + 14, y: y + 42, size: 9.5, font: bold, color: DARK });
       back.drawText(`Adhésion : ${snap.joined_year}`, { x: x + 14, y: y + 30, size: 7, font: regular, color: MUTED });
       back.drawText(`Délivrée le ${formatDate(item.issuance.issued_on)}`, { x: x + 14, y: y + 19, size: 6.3, font: regular, color: MUTED });
       back.drawText(`Valide jusqu’au ${formatDate(item.issuance.valid_until)}`, { x: x + 14, y: y + 8, size: 6.3, font: bold, color: GREEN });
@@ -228,9 +234,9 @@ export async function POST(request: NextRequest) {
       const seal = await pdf.embedPng(item.seal);
 
       // Bloc officiel compact, dans les marges de sécurité et sans déformer les PNG.
-      const officialX = x + 134;
+      const officialX = x + 124;
       const officialY = y + 12;
-      const officialW = 98;
+      const officialW = 108;
       const officialH = 77;
       back.drawRectangle({
         x: officialX,
@@ -243,17 +249,17 @@ export async function POST(request: NextRequest) {
       });
       back.drawRectangle({ x: officialX, y: officialY + officialH - 2, width: officialW / 2, height: 2, color: ORANGE });
       back.drawRectangle({ x: officialX + officialW / 2, y: officialY + officialH - 2, width: officialW / 2, height: 2, color: GREEN });
-      drawCenteredText(back, "VALIDATION OFFICIELLE", officialX + 4, officialY + officialH - 13, officialW - 8, bold, 5.1, GREEN);
+      drawCenteredText(back, "VALIDATION OFFICIELLE", officialX + 4, officialY + officialH - 11, officialW - 8, bold, 5.1, GREEN);
 
       const signatureX = officialX + 4;
-      const signatureW = 43;
-      drawImageContained(back, signature, signatureX + 1, officialY + 28, signatureW - 2, 25);
-      back.drawLine({ start: { x: signatureX + 1, y: officialY + 25 }, end: { x: signatureX + signatureW - 1, y: officialY + 25 }, thickness: 0.55, color: rgb(0.55, 0.61, 0.56) });
+      const signatureW = 48;
+      drawImageContained(back, signature, signatureX, officialY + 31, signatureW, 26);
+      back.drawLine({ start: { x: signatureX + 1, y: officialY + 28 }, end: { x: signatureX + signatureW - 1, y: officialY + 28 }, thickness: 0.55, color: rgb(0.55, 0.61, 0.56) });
       drawCenteredText(back, "Signature autorisée", signatureX, officialY + 16, signatureW, regular, 4.7, MUTED);
 
-      const sealX = officialX + 51;
-      const sealW = 43;
-      drawImageContained(back, seal, sealX + 3, officialY + 27, sealW - 6, 34);
+      const sealX = officialX + 56;
+      const sealW = 48;
+      drawImageContained(back, seal, sealX + 2, officialY + 24, sealW - 4, 42);
       drawCenteredText(back, "Cachet officiel ADEIO", sealX, officialY + 16, sealW, regular, 4.4, MUTED);
     }
   }
