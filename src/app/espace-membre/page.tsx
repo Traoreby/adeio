@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { getSignedInUser } from "@/lib/auth";
 import { memberStatusLabels, type MemberStatus } from "@/lib/members";
-import { getMemberPhotoUrl } from "@/lib/supabase/service";
 
 export const metadata: Metadata = { title: "Espace membre" };
 
@@ -44,12 +43,12 @@ export default async function MemberHomePage() {
   const [{ data: profile }, { data: announcements }, { data: member }] = await Promise.all([
     supabase.from("profiles").select("display_name,must_change_password,mfa_enabled").eq("user_id", user.id).maybeSingle(),
     supabase.rpc("get_visible_announcements", { p_limit: 20 }),
-    supabase.from("members").select("member_number,first_name,last_name,joined_year,status,photo_path,photo_public_consent").eq("user_id", user.id).maybeSingle(),
+    supabase.from("members").select("id,member_number,first_name,last_name,joined_year,status,photo_path,photo_public_consent").eq("user_id", user.id).maybeSingle(),
   ]);
 
   if (profile?.must_change_password) redirect("/mot-de-passe");
 
-  const photoUrl = await getMemberPhotoUrl(member?.photo_path);
+  const photoUrl = member?.photo_path ? `/api/member-photos/${member.id}` : null;
   const memberNotices = ((announcements ?? []) as Announcement[])
     .filter((item) => item.visibility === "members")
     .slice(0, 3);
@@ -123,7 +122,7 @@ export default async function MemberHomePage() {
         <section className="member-home-card member-home-membership" aria-labelledby="member-card-title">
           <div className="member-home-member-avatar">
             {photoUrl ? (
-              <Image src={photoUrl} alt={`Photo de ${member?.first_name} ${member?.last_name}`} fill sizes="72px" />
+              <Image src={photoUrl} alt={`Photo de ${member?.first_name} ${member?.last_name}`} fill sizes="72px" unoptimized />
             ) : (
               <UserRound size={30} aria-hidden="true" />
             )}

@@ -4,7 +4,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Search, UserRound } from "lucide-react";
 import { getSignedInUser } from "@/lib/auth";
-import { getMemberPhotoUrls } from "@/lib/supabase/service";
 import { memberStatusLabels } from "@/lib/members";
 import { PaginationLinks } from "@/components/pagination-links";
 
@@ -30,12 +29,10 @@ export default async function MemberDirectoryPage({ searchParams }: Props) {
   if (query) memberQuery = memberQuery.or(`first_name.ilike.%${query}%,last_name.ilike.%${query}%,member_number.ilike.%${query}%`);
   if (ids) memberQuery = ids.length ? memberQuery.in("id", ids) : memberQuery.eq("id", "00000000-0000-0000-0000-000000000000");
   const { data: members, count } = await memberQuery;
-  const paths = (members ?? []).filter((member) => member.photo_public_consent).map((member) => member.photo_path);
-  const photoUrls = await getMemberPhotoUrls(paths);
-  const cards = (members ?? []).map((member) => ({ ...member, photoUrl: member.photo_public_consent && member.photo_path ? photoUrls.get(member.photo_path) ?? null : null }));
+  const cards = (members ?? []).map((member) => ({ ...member, photoUrl: member.photo_public_consent && member.photo_path ? `/api/member-photos/${member.id}` : null }));
   return <section className="member-space-page section-pad"><div className="container"><div className="member-space-heading"><div><div className="eyebrow eyebrow-green">COMMUNAUTÉ ADEIO</div><h1>Annuaire des membres</h1><p>Annuaire réservé aux membres connectés. Les coordonnées personnelles n’y figurent pas.</p></div><Link href="/espace-membre" className="text-link">Mon espace membre</Link></div>
     <form className="member-search-form"><label><Search size={17} /><input name="q" defaultValue={query} placeholder="Rechercher par nom ou numéro ADEIO" aria-label="Rechercher un membre" /></label><label className="year-filter-label">Présent en année <input name="annee" type="number" min="1900" max="2200" defaultValue={year} placeholder="Ex. 2024" /></label><button type="submit" className="admin-submit">Rechercher</button></form>
-    <div className="member-directory-grid">{cards.map((member) => <article className="member-directory-card" key={member.id}><div className="member-directory-avatar">{member.photoUrl ? <Image src={member.photoUrl} alt={`Photo de ${member.first_name} ${member.last_name}`} fill sizes="96px" /> : <UserRound size={28} />}</div><div><span className="status-chip">{memberStatusLabels.active}</span><h2>{member.first_name} {member.last_name}</h2><p>{member.member_number}</p><small>Membre depuis {member.joined_year}</small></div></article>)}</div>
+    <div className="member-directory-grid">{cards.map((member) => <article className="member-directory-card" key={member.id}><div className="member-directory-avatar">{member.photoUrl ? <Image src={member.photoUrl} alt={`Photo de ${member.first_name} ${member.last_name}`} fill sizes="96px" unoptimized /> : <UserRound size={28} />}</div><div><span className="status-chip">{memberStatusLabels.active}</span><h2>{member.first_name} {member.last_name}</h2><p>{member.member_number}</p><small>Membre depuis {member.joined_year}</small></div></article>)}</div>
     {!cards.length && <div className="member-space-empty"><h2>{query || year ? "Aucun résultat pour ces critères" : "L’annuaire ne contient pas encore de fiches"}</h2><p>{query || year ? "Vérifiez le nom, le numéro ADEIO ou l’année de présence, ou effacez les filtres pour reprendre la recherche." : "Les fiches des membres actifs apparaîtront ici après leur ajout dans la plateforme."}</p>{query || year ? <Link href="/membres" className="text-link">Effacer les filtres</Link> : canManageMembers ? <Link href="/admin/membres/nouveau" className="text-link">Ajouter la première fiche membre</Link> : null}</div>}
     <PaginationLinks pathname="/membres" page={page} hasNext={(count ?? 0) > page * pageSize} query={{ q: query, annee: year }} />
     <p className="member-directory-footnote">Pour toute correction de vos propres informations, contactez l’administration ADEIO.</p>

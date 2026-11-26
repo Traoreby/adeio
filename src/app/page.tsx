@@ -81,7 +81,7 @@ export default async function HomePage() {
         <div className="container board-preview-grid">
           {executive.length ? executive.slice(0, 3).map((person) => (
             <Card className="person-card" key={person.id} data-reveal><CardContent>
-              <div className="person-photo">{person.photoUrl ? <Image src={person.photoUrl} alt={person.name} fill sizes="(max-width: 760px) 100vw, (max-width: 1200px) 50vw, 400px" /> : <UsersRound size={34} />}</div>
+              <div className="person-photo">{person.photoUrl ? <Image src={person.photoUrl} alt={person.name} fill sizes="(max-width: 760px) 100vw, (max-width: 1200px) 50vw, 400px" unoptimized /> : <UsersRound size={34} />}</div>
               <div className="person-info"><span>{person.position}</span><h3>{person.name}</h3></div>
             </CardContent></Card>
           )) : <div className="empty-board"><div className="empty-board-icon"><UsersRound size={24} /></div><div><div className="eyebrow eyebrow-green">GOUVERNANCE ADEIO</div><strong>Le bureau exécutif sera présenté ici</strong><p>Cette rubrique affichera les responsables et leurs fonctions après l’enregistrement du mandat officiel.</p></div><Link href="/bureau" className="empty-board-link">Découvrir la rubrique <ArrowRight size={16} /></Link></div>}

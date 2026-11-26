@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
               });
               return { memberId: member.id, ok: !issueError, reason: issueError ? "Le QR n’a pas pu être émis." : undefined };
             } catch {
-              return { memberId: member.id, ok: false, reason: "La clé de chiffrement QR est indisponible." };
+              return { memberId: member.id, ok: false, reason: "ADEIO_QR_ENCRYPTION_KEY_V1 est absente ou invalide sur le serveur." };
             }
           }));
           issued += results.filter((result) => result.ok).length;

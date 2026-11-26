@@ -8,7 +8,6 @@ import { ProfileSubmitButton } from "@/components/profile-submit-button";
 import { saveOwnMemberProfileAction } from "@/app/espace-membre/profil/actions";
 import { getSignedInUser } from "@/lib/auth";
 import { memberStatusLabels, type MemberStatus } from "@/lib/members";
-import { getMemberPhotoUrl } from "@/lib/supabase/service";
 
 export const metadata: Metadata = { title: "Mon profil · ADEIO" };
 
@@ -50,7 +49,7 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
     supabase.from("membership_periods").select("id,starts_on,ends_on,note").eq("member_id", member.id).order("starts_on", { ascending: false }),
     supabase.from("member_education_periods").select("id,study_program,institution,starts_on,ends_on,is_current").eq("member_id", member.id).order("starts_on", { ascending: false }),
   ]) : [{ data: null }, { data: null }, { data: null }];
-  const photoUrl = await getMemberPhotoUrl(member?.photo_path);
+  const photoUrl = member?.photo_path ? `/api/member-photos/${member.id}` : null;
   const isReactivation = member?.status === "former" && onboarding?.kind === "reactivation" && onboarding.status === "pending";
   const waitingForAdmin = member?.status === "former" && onboarding?.kind === "reactivation" && onboarding.status === "profile_submitted";
   const isNewOnboarding = onboarding?.kind === "new_member" && onboarding.status === "pending"
@@ -67,7 +66,7 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
     {expiredAwaitingArchive && <div role="status" className="admin-banner">Votre année de sortie est atteinte. Les accès réservés aux membres actifs sont fermés ; le dossier passera dans les archives au prochain traitement. Une réactivation exige une décision de l’administration.</div>}
 
     <article className="member-profile-card member-profile-self-card">
-      {member && <div className="member-directory-avatar member-profile-avatar">{photoUrl ? <Image src={photoUrl} alt={`Photo de ${member.first_name} ${member.last_name}`} fill sizes="160px" /> : <UserRound size={36} />}</div>}
+      {member && <div className="member-directory-avatar member-profile-avatar">{photoUrl ? <Image src={photoUrl} alt={`Photo de ${member.first_name} ${member.last_name}`} fill sizes="160px" unoptimized /> : <UserRound size={36} />}</div>}
       <div className="eyebrow eyebrow-green">FICHE MEMBRE</div>
       <h2>{member ? `${member.first_name} ${member.last_name}` : profile?.display_name || "Nouvelle adhésion"}</h2>
       {member && <p className="member-profile-number">{member.member_number}</p>}

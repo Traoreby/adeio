@@ -13,11 +13,17 @@ export type EncryptedMemberToken = {
 function encryptionKey(version: string) {
   if (!/^[A-Za-z0-9_-]{1,16}$/.test(version)) throw new Error("Version de clé QR invalide.");
   const currentVersion = process.env.ADEIO_QR_ENCRYPTION_KEY_VERSION?.trim() || "1";
-  const encoded = process.env[`ADEIO_QR_ENCRYPTION_KEY_V${version}`]?.trim()
+  const versionedName = `ADEIO_QR_ENCRYPTION_KEY_V${version}`;
+  const encoded = process.env[versionedName]?.trim()
     || (version === currentVersion ? process.env.ADEIO_QR_ENCRYPTION_KEY?.trim() : undefined);
-  if (!encoded) throw new Error("La clé serveur de chiffrement des QR ADEIO n’est pas configurée.");
+  if (!encoded) throw new Error(`La clé serveur ${versionedName} n’est pas configurée.`);
+  if (!/^[A-Za-z0-9+/]{43}=$/.test(encoded)) {
+    throw new Error(`${versionedName} doit être une clé Base64 standard de 32 octets.`);
+  }
   const key = Buffer.from(encoded, "base64");
-  if (key.byteLength !== 32) throw new Error("ADEIO_QR_ENCRYPTION_KEY doit contenir exactement 32 octets encodés en base64.");
+  if (key.byteLength !== 32 || key.toString("base64") !== encoded) {
+    throw new Error(`${versionedName} doit être une clé Base64 standard de 32 octets.`);
+  }
   return key;
 }
 
