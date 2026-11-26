@@ -76,6 +76,7 @@ export async function saveOwnMemberProfileAction(formData: FormData) {
   });
   if (saveError || !memberId) {
     const message = saveError?.message?.includes("arrivée à échéance") ? "annee-sortie-atteinte"
+      : saveError?.message?.includes("années validées") ? "annees-validees-verrouillees"
       : saveError?.code === "42501" ? "dossier-introuvable" : "enregistrement-impossible";
     redirect(`/espace-membre/profil?erreur=${message}`);
   }

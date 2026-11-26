@@ -15,6 +15,7 @@ const feedback: Record<string, string> = {
   "profil-invalide": "Complétez tous les champs obligatoires avec des valeurs valides.",
   "annee-sortie-invalide": "L’année de sortie doit être postérieure à l’année en cours et ne peut pas précéder l’adhésion.",
   "annee-sortie-atteinte": "Votre année de sortie est atteinte. Seule l’administration peut décider d’une réactivation.",
+  "annees-validees-verrouillees": "Vos années ont été validées et ne peuvent plus être modifiées. Contactez le Super Admin pour demander une correction.",
   "photo-invalide": "La photo doit être une image WebP ou JPEG compressée de 500 Ko maximum.",
   "photo-impossible": "La photo n’a pas pu être enregistrée. Réessayez.",
   "photo-envoi-impossible": "Le transfert de la photo a échoué. Vérifiez votre connexion et réessayez.",
@@ -44,11 +45,12 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
   ]);
   if (profile?.must_change_password) redirect("/mot-de-passe");
 
-  const [{ data: details }, { data: periods }, { data: educationRows }] = member ? await Promise.all([
+  const [{ data: details }, { data: periods }, { data: educationRows }, { data: approvedYearsLocked }] = member ? await Promise.all([
     supabase.from("member_private_details").select("phone,sex").eq("member_id", member.id).maybeSingle(),
     supabase.from("membership_periods").select("id,starts_on,ends_on,note").eq("member_id", member.id).order("starts_on", { ascending: false }),
     supabase.from("member_education_periods").select("id,study_program,institution,starts_on,ends_on,is_current").eq("member_id", member.id).order("starts_on", { ascending: false }),
-  ]) : [{ data: null }, { data: null }, { data: null }];
+    supabase.rpc("own_member_card_years_locked"),
+  ]) : [{ data: null }, { data: null }, { data: null }, { data: false }];
   const photoUrl = member?.photo_path ? `/api/member-photos/${member.id}` : null;
   const isReactivation = member?.status === "former" && onboarding?.kind === "reactivation" && onboarding.status === "pending";
   const waitingForAdmin = member?.status === "former" && onboarding?.kind === "reactivation" && onboarding.status === "profile_submitted";
@@ -81,7 +83,8 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
         <p>{isReactivation ? "Une nouvelle photo est obligatoire. Votre numéro ADEIO et votre historique seront conservés ; l’administration validera la réactivation." : "Les champs marqués obligatoires sont nécessaires pour tenir votre fiche ADEIO à jour."}</p>
         <div className="admin-form">
           <div className="admin-form-grid"><div><label htmlFor="first_name">Prénom(s) *</label><input id="first_name" name="first_name" required maxLength={100} defaultValue={member?.first_name ?? ""} /></div><div><label htmlFor="last_name">Nom *</label><input id="last_name" name="last_name" required maxLength={100} defaultValue={member?.last_name ?? ""} /></div></div>
-          <div className="admin-form-grid"><div><label htmlFor="joined_year">Année d’adhésion initiale *</label><input id="joined_year" name="joined_year" type="number" min="1900" max="2200" required defaultValue={member?.joined_year ?? ""} readOnly={Boolean(member)} /></div><div><label htmlFor="exit_year">Année de sortie *</label><input id="exit_year" name="exit_year" type="number" min="1900" max="2200" required defaultValue={member?.exit_year ?? ""} /></div></div>
+          <div className="admin-form-grid"><div><label htmlFor="joined_year">Année d’adhésion initiale *</label><input id="joined_year" name="joined_year" type="number" min="1900" max="2200" required defaultValue={member?.joined_year ?? ""} readOnly={Boolean(member)} /></div><div><label htmlFor="exit_year">Année de fin de cycle *</label><input id="exit_year" name="exit_year" type="number" min="1900" max="2200" required defaultValue={member?.exit_year ?? ""} readOnly={Boolean(member && approvedYearsLocked && !isReactivation)} /></div></div>
+          {member && approvedYearsLocked && !isReactivation && <p className="admin-form-note">Les années validées par le Super Admin sont verrouillées. Contactez l’administration si une correction est nécessaire.</p>}
           <div className="admin-form-grid"><div><label htmlFor="study_program">Filière *</label><input id="study_program" name="study_program" required maxLength={160} defaultValue={currentEducation?.study_program ?? ""} /></div><div><label htmlFor="institution">Établissement *</label><input id="institution" name="institution" required maxLength={200} defaultValue={currentEducation?.institution ?? ""} /></div></div>
           <div className="admin-form-grid"><div><label htmlFor="phone">Téléphone *</label><input id="phone" name="phone" type="tel" required maxLength={40} defaultValue={details?.phone ?? ""} /></div><div><label htmlFor="sex">Sexe{isNewOnboarding || isReactivation || !details?.sex ? " *" : ""}</label><select id="sex" name="sex" required={Boolean(isNewOnboarding || isReactivation || !details?.sex)} defaultValue={details?.sex === "female" || details?.sex === "male" ? details.sex : ""}><option value="">{details?.sex && details.sex !== "female" && details.sex !== "male" ? "Conserver la valeur historique" : "Choisir une option"}</option><option value="female">Femme</option><option value="male">Homme</option></select>{details?.sex && details.sex !== "female" && details.sex !== "male" && <small>Votre ancienne valeur est conservée si vous ne sélectionnez pas un nouveau choix.</small>}</div></div>
           <MemberPhotoInput required={Boolean(isReactivation)} />

@@ -240,21 +240,6 @@ export async function updateMemberAction(formData: FormData) {
   redirect(`${nextPath}?statut=membre-modifie`);
 }
 
-export async function addMembershipPeriodAction(formData: FormData) {
-  const id = value(formData, "member_id");
-  if (!z.string().uuid().safeParse(id).success) redirect("/admin/membres?erreur=membre-introuvable");
-  const path = `/admin/membres/${id}`;
-  const { supabase, user } = await adminContext(path);
-  const parsed = z.object({ startsOn: z.string().date(), endsOn: z.union([z.string().date(), z.literal("")]), note: z.string().trim().max(200) }).safeParse({
-    startsOn: value(formData, "starts_on"), endsOn: value(formData, "ends_on"), note: value(formData, "note"),
-  });
-  if (!parsed.success || (parsed.data.endsOn && parsed.data.endsOn < parsed.data.startsOn)) redirect(`${path}?erreur=periode-invalide`);
-  const { error } = await supabase.from("membership_periods").insert({ member_id: id, starts_on: parsed.data.startsOn, ends_on: parsed.data.endsOn || null, note: parsed.data.note || null, created_by: user.id });
-  if (error) redirect(`${path}?erreur=periode-impossible`);
-  revalidatePath(path); revalidatePath("/admin/archives"); revalidatePath("/archives");
-  redirect(`${path}?statut=periode-ajoutee`);
-}
-
 export async function uploadMemberPhotoAction(formData: FormData) {
   const id = value(formData, "member_id");
   if (!z.string().uuid().safeParse(id).success) redirect("/admin/membres?erreur=membre-introuvable");
