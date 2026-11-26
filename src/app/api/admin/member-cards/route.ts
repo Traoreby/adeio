@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont, type PDFImage } from "pdf-lib";
 import QRCode from "qrcode";
 import sharp from "sharp";
 import { z } from "zod";
@@ -66,6 +66,24 @@ function drawShell(page: PDFPage, x: number, y: number, cardW: number, cardH: nu
   page.drawRectangle({ x, y: y + cardH - 5, width: cardW * 0.34, height: 5, color: ORANGE });
   page.drawRectangle({ x: x + cardW * 0.34, y: y + cardH - 5, width: cardW * 0.32, height: 5, color: rgb(1, 1, 1) });
   page.drawRectangle({ x: x + cardW * 0.66, y: y + cardH - 5, width: cardW * 0.34, height: 5, color: GREEN });
+}
+
+function drawImageContained(page: PDFPage, image: PDFImage, x: number, y: number, maxWidth: number, maxHeight: number) {
+  const scale = Math.min(maxWidth / image.width, maxHeight / image.height);
+  const width = image.width * scale;
+  const height = image.height * scale;
+  page.drawImage(image, {
+    x: x + (maxWidth - width) / 2,
+    y: y + (maxHeight - height) / 2,
+    width,
+    height,
+  });
+}
+
+function drawCenteredText(page: PDFPage, text: string, x: number, y: number, width: number, font: PDFFont, size: number, color: ReturnType<typeof rgb>) {
+  const fitted = fitText(text, width, font, size);
+  const textWidth = font.widthOfTextAtSize(fitted, size);
+  page.drawText(fitted, { x: x + Math.max(0, (width - textWidth) / 2), y, size, font, color });
 }
 
 function formatDate(value: string) {
@@ -197,18 +215,46 @@ export async function POST(request: NextRequest) {
 
       back.drawText("ASSOCIATION DES ÉTUDIANTS", { x: x + 14, y: y + cardH - 29, size: 8, font: bold, color: DARK });
       back.drawText("IVOIRIENS DE L’ODISHA", { x: x + 14, y: y + cardH - 43, size: 8, font: bold, color: DARK });
-      back.drawText("KIIT University · Bhubaneswar, Inde", { x: x + 14, y: y + cardH - 65, size: 7, font: regular, color: MUTED });
-      back.drawText("NUMÉRO ADEIO", { x: x + 14, y: y + 61, size: 6.5, font: bold, color: GREEN });
-      back.drawText(fitText(snap.member_number, 210, bold, 10), { x: x + 14, y: y + 44, size: 10, font: bold, color: DARK });
+      back.drawText("KIIT University · Bhubaneswar, Inde", { x: x + 14, y: y + cardH - 58, size: 6.7, font: regular, color: MUTED });
+      back.drawText("adeio.vercel.app", { x: x + 14, y: y + cardH - 69, size: 6.2, font: bold, color: GREEN });
+      back.drawText("Scannez le QR pour vérifier", { x: x + 14, y: y + cardH - 80, size: 5.7, font: regular, color: MUTED });
+      back.drawText("l’authenticité et la validité.", { x: x + 14, y: y + cardH - 89, size: 5.7, font: regular, color: MUTED });
+      back.drawText("NUMÉRO ADEIO", { x: x + 14, y: y + 55, size: 6.5, font: bold, color: GREEN });
+      back.drawText(fitText(snap.member_number, 116, bold, 9.5), { x: x + 14, y: y + 42, size: 9.5, font: bold, color: DARK });
       back.drawText(`Adhésion : ${snap.joined_year}`, { x: x + 14, y: y + 30, size: 7, font: regular, color: MUTED });
-      back.drawText(`Délivrée le ${formatDate(item.issuance.issued_on)}`, { x: x + 14, y: y + 19, size: 6.5, font: regular, color: MUTED });
-      back.drawText(`Valide jusqu’au ${formatDate(item.issuance.valid_until)}`, { x: x + 14, y: y + 8, size: 6.5, font: bold, color: GREEN });
-      back.drawText("adeio.vercel.app · Scannez le QR pour vérifier cette carte.", { x: x + 14, y: y + cardH - 80, size: 6, font: regular, color: MUTED });
+      back.drawText(`Délivrée le ${formatDate(item.issuance.issued_on)}`, { x: x + 14, y: y + 19, size: 6.3, font: regular, color: MUTED });
+      back.drawText(`Valide jusqu’au ${formatDate(item.issuance.valid_until)}`, { x: x + 14, y: y + 8, size: 6.3, font: bold, color: GREEN });
       const signature = await pdf.embedPng(item.signature);
       const seal = await pdf.embedPng(item.seal);
-      back.drawImage(seal, { x: x + cardW - 43, y: y + 35, width: 28, height: 28 });
-      back.drawImage(signature, { x: x + cardW - 103, y: y + 22, width: 55, height: 20 });
-      back.drawText("Signature autorisée", { x: x + cardW - 105, y: y + 14, size: 5.5, font: regular, color: MUTED });
+
+      // Bloc officiel compact, dans les marges de sécurité et sans déformer les PNG.
+      const officialX = x + 134;
+      const officialY = y + 12;
+      const officialW = 98;
+      const officialH = 77;
+      back.drawRectangle({
+        x: officialX,
+        y: officialY,
+        width: officialW,
+        height: officialH,
+        color: rgb(0.975, 0.985, 0.975),
+        borderColor: rgb(0.84, 0.89, 0.85),
+        borderWidth: 0.65,
+      });
+      back.drawRectangle({ x: officialX, y: officialY + officialH - 2, width: officialW / 2, height: 2, color: ORANGE });
+      back.drawRectangle({ x: officialX + officialW / 2, y: officialY + officialH - 2, width: officialW / 2, height: 2, color: GREEN });
+      drawCenteredText(back, "VALIDATION OFFICIELLE", officialX + 4, officialY + officialH - 13, officialW - 8, bold, 5.1, GREEN);
+
+      const signatureX = officialX + 4;
+      const signatureW = 43;
+      drawImageContained(back, signature, signatureX + 1, officialY + 28, signatureW - 2, 25);
+      back.drawLine({ start: { x: signatureX + 1, y: officialY + 25 }, end: { x: signatureX + signatureW - 1, y: officialY + 25 }, thickness: 0.55, color: rgb(0.55, 0.61, 0.56) });
+      drawCenteredText(back, "Signature autorisée", signatureX, officialY + 16, signatureW, regular, 4.7, MUTED);
+
+      const sealX = officialX + 51;
+      const sealW = 43;
+      drawImageContained(back, seal, sealX + 3, officialY + 27, sealW - 6, 34);
+      drawCenteredText(back, "Cachet officiel ADEIO", sealX, officialY + 16, sealW, regular, 4.4, MUTED);
     }
   }
 
