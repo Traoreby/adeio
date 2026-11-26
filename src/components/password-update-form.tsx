@@ -19,7 +19,7 @@ export function PasswordUpdateForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const flow = searchParams.get("flow");
-  const isInvitation = flow === "invitation";
+  const isInvitation = flow === "invitation" || flow === "signup";
   const isReactivation = flow === "reactivation";
   const [error, setError] = useState("");
   const form = useForm<Values>({ resolver: zodResolver(schema), defaultValues: { password: "", confirmation: "" } });

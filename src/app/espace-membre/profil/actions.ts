@@ -31,7 +31,9 @@ async function validPhoto(entry: FormDataEntryValue | null) {
   return validJpeg || validWebp ? entry : false;
 }
 
-export async function saveOwnMemberProfileAction(formData: FormData) {
+export type MemberProfileActionResult = { error?: string; success?: string; redirectTo?: string };
+
+export async function saveOwnMemberProfileAction(_previous: MemberProfileActionResult, formData: FormData): Promise<MemberProfileActionResult> {
   const { supabase, user, roles } = await getSignedInUser();
   if (!supabase || !user) redirect("/connexion?next=%2Fespace-membre%2Fprofil");
   if (!roles.includes("member")) redirect("/espace-membre?erreur=acces-refuse");
@@ -47,66 +49,76 @@ export async function saveOwnMemberProfileAction(formData: FormData) {
     phone: textValue(formData, "phone"),
     sex: textValue(formData, "sex"),
   });
-  if (!parsed.success) redirect("/espace-membre/profil?erreur=profil-invalide");
+  if (!parsed.success) return { error: "Complétez tous les champs obligatoires avec des valeurs valides." };
   const input = parsed.data;
   const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
-  if (input.exitYear <= currentYear || input.exitYear < input.joinedYear) redirect("/espace-membre/profil?erreur=annee-sortie-invalide");
+  if (input.exitYear <= currentYear || input.exitYear < input.joinedYear) return { error: "L’année de fin de cycle doit être postérieure à l’année en cours et ne peut pas précéder l’adhésion." };
 
   const photo = await validPhoto(formData.get("photo"));
-  if (photo === false) redirect("/espace-membre/profil?erreur=photo-invalide");
-  const [{ data: member }, { data: onboarding }, { data: profile }] = await Promise.all([
+  if (photo === false) return { error: "La photo doit être une image WebP ou JPEG compressée de 500 Ko maximum." };
+  const [{ data: member, error: memberError }, { data: onboarding, error: onboardingError }, { data: profile, error: profileError }] = await Promise.all([
     supabase.from("members").select("id,joined_year,photo_path,status").eq("user_id", user.id).maybeSingle(),
     supabase.from("member_onboarding").select("kind,status,member_id").eq("user_id", user.id).maybeSingle(),
     supabase.from("profiles").select("must_change_password").eq("user_id", user.id).maybeSingle(),
   ]);
+  if (memberError || onboardingError || profileError) return { error: "Le dossier membre n’a pas pu être chargé. Réessayez dans quelques instants." };
   if (profile?.must_change_password) redirect("/mot-de-passe");
   const isReactivation = member?.status === "former" && onboarding?.kind === "reactivation" && onboarding.status === "pending";
-  if (member?.status === "former" && !isReactivation) redirect("/espace-membre/profil?erreur=reactivation-requise");
-  if (isReactivation && !photo) redirect("/espace-membre/profil?erreur=photo-reactivation-requise");
+  if (member?.status === "former" && !isReactivation) return { error: "Votre compte est archivé. Contactez l’administration pour demander une réactivation." };
+  if (isReactivation && !photo) return { error: "Pour demander la réactivation, une nouvelle photo doit être prise ou importée." };
 
-  const { data: memberId, error: saveError } = await supabase.rpc("complete_own_member_profile", {
-    p_first_name: input.firstName,
-    p_last_name: input.lastName,
-    p_joined_year: input.joinedYear,
-    p_exit_year: input.exitYear,
-    p_study_program: input.studyProgram,
-    p_institution: input.institution,
-    p_phone: input.phone,
-    p_sex: input.sex || null,
-  });
-  if (saveError || !memberId) {
-    const message = saveError?.message?.includes("arrivée à échéance") ? "annee-sortie-atteinte"
-      : saveError?.message?.includes("années validées") ? "annees-validees-verrouillees"
-      : saveError?.code === "42501" ? "dossier-introuvable" : "enregistrement-impossible";
-    redirect(`/espace-membre/profil?erreur=${message}`);
-  }
-
-  let previousPhotoPath: string | null = member?.photo_path ?? null;
-  if (photo) {
-    const storagePath = `${memberId}/${randomUUID()}.${photo.type === "image/webp" ? "webp" : "jpg"}`;
-    const { error: uploadError } = await supabase.storage.from("member-photos").upload(storagePath, photo, { contentType: photo.type, upsert: false });
-    if (uploadError) redirect("/espace-membre/profil?erreur=photo-envoi-impossible");
-    const { data: previous, error: photoLinkError } = await supabase.rpc("set_own_member_photo", { p_storage_path: storagePath });
-    if (photoLinkError) {
-      await supabase.storage.from("member-photos").remove([storagePath]);
-      redirect("/espace-membre/profil?erreur=photo-liaison-impossible");
+  try {
+    const { data: memberId, error: saveError } = await supabase.rpc("complete_own_member_profile", {
+      p_first_name: input.firstName,
+      p_last_name: input.lastName,
+      p_joined_year: input.joinedYear,
+      p_exit_year: input.exitYear,
+      p_study_program: input.studyProgram,
+      p_institution: input.institution,
+      p_phone: input.phone,
+      p_sex: input.sex || null,
+    });
+    if (saveError || !memberId) {
+      if (saveError?.message?.includes("arrivée à échéance")) return { error: "Votre année de sortie est atteinte. Seule l’administration peut décider d’une réactivation." };
+      if (saveError?.message?.includes("années validées")) return { error: "Vos années ont été validées et sont verrouillées. Contactez le Super Admin pour demander une correction." };
+      if (saveError?.code === "42501") return { error: "Aucun dossier ADEIO en attente n’est associé à ce compte. Contactez l’administration." };
+      return { error: "Le profil n’a pas pu être enregistré. Vérifiez votre connexion puis réessayez." };
     }
-    previousPhotoPath = typeof previous === "string" ? previous : previousPhotoPath;
-    if (previousPhotoPath && previousPhotoPath !== storagePath) await supabase.storage.from("member-photos").remove([previousPhotoPath]);
+    revalidatePath("/espace-membre");
+    revalidatePath("/espace-membre/profil");
+    revalidatePath("/membres");
+    revalidatePath("/archives");
+    revalidatePath("/admin/membres");
+
+    let previousPhotoPath: string | null = member?.photo_path ?? null;
+    if (photo) {
+      const storagePath = `${memberId}/${randomUUID()}.${photo.type === "image/webp" ? "webp" : "jpg"}`;
+      const { error: uploadError } = await supabase.storage.from("member-photos").upload(storagePath, photo, { contentType: photo.type, upsert: false });
+      if (uploadError) return { error: "Le profil a été enregistré, mais le transfert de la photo a échoué. Vérifiez votre connexion puis réessayez." };
+      const { data: previous, error: photoLinkError } = await supabase.rpc("set_own_member_photo", { p_storage_path: storagePath });
+      if (photoLinkError) {
+        await supabase.storage.from("member-photos").remove([storagePath]);
+        return { error: "Le profil a été enregistré, mais la photo n’a pas pu être associée à votre fiche. Réessayez." };
+      }
+      previousPhotoPath = typeof previous === "string" ? previous : previousPhotoPath;
+      if (previousPhotoPath && previousPhotoPath !== storagePath) await supabase.storage.from("member-photos").remove([previousPhotoPath]);
+    }
+
+    const { error: consentError } = await supabase.rpc("set_own_member_photo_consent", { p_consent: formData.get("photo_public_consent") === "on" });
+    if (consentError) return { error: "Le profil est enregistré, mais le consentement photo n’a pas pu être mis à jour." };
+
+    if (isReactivation) {
+      const { error } = await supabase.rpc("submit_own_reactivation_profile");
+      if (error) return { error: "Le profil a été mis à jour, mais la demande de réactivation n’a pas pu être transmise. Contactez l’administration." };
+    }
+
+    return {
+      success: isReactivation
+        ? "Votre profil et votre nouvelle photo ont été transmis à l’administration pour validation."
+        : "Votre profil a été enregistré.",
+      redirectTo: `/espace-membre/profil?statut=${isReactivation ? "reactivation-soumise" : "profil-enregistre"}`,
+    };
+  } catch {
+    return { error: "Une erreur technique a interrompu l’enregistrement. Vos champs sont conservés : vérifiez votre connexion puis réessayez." };
   }
-
-  const { error: consentError } = await supabase.rpc("set_own_member_photo_consent", { p_consent: formData.get("photo_public_consent") === "on" });
-  if (consentError) redirect("/espace-membre/profil?erreur=consentement-impossible");
-
-  if (isReactivation) {
-    const { error } = await supabase.rpc("submit_own_reactivation_profile");
-    if (error) redirect("/espace-membre/profil?erreur=reactivation-envoi-impossible");
-  }
-
-  revalidatePath("/espace-membre");
-  revalidatePath("/espace-membre/profil");
-  revalidatePath("/membres");
-  revalidatePath("/archives");
-  revalidatePath("/admin/membres");
-  redirect(`/espace-membre/profil?statut=${isReactivation ? "reactivation-soumise" : "profil-enregistre"}`);
 }

@@ -191,6 +191,8 @@ export async function POST(request: NextRequest) {
       const { cardW, cardH, x, y } = cardPosition(localIndex);
       drawShell(front, x, y, cardW, cardH);
       drawShell(back, x, y, cardW, cardH);
+      // Keep the front watermark in the open central field, behind all printed content.
+      drawImageContained(front, logo, x + 104, y + 40, 48, 48, 0.04);
       drawImageContained(back, logo, x + 80, y + 39, 67, 67, 0.08);
 
       front.drawText("ADEIO", { x: x + 13, y: y + cardH - 25, size: 12, font: bold, color: GREEN });

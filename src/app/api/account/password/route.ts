@@ -55,10 +55,27 @@ export async function POST(request: NextRequest) {
   const roles = roleResult.data.map((row) => row.role);
   const isAdmin = roles.includes("admin") || roles.includes("super_admin");
   const fallback = isAdmin ? "/admin" : "/espace-membre";
-  let redirectTo = safeRedirectPath(parsed.data.next ?? null, request.url, fallback);
+  let postActivationFallback = fallback;
+  if (isFirstPasswordFlow && roles.includes("member")) {
+    const { data: onboarding, error: onboardingError } = await serviceClient
+      .from("member_onboarding")
+      .select("kind,status")
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (onboardingError) return errorResponse("L’état de l’adhésion n’a pas pu être vérifié. Contactez l’administration.", 503);
+    if (onboarding?.kind === "new_member" && onboarding.status === "pending") {
+      postActivationFallback = "/espace-membre/profil";
+    }
+  }
+  if (isReactivationFlow && roles.includes("member")) postActivationFallback = "/espace-membre/profil";
+  const successfulFallback = isFirstPasswordFlow || isReactivationFlow ? postActivationFallback : fallback;
+  let redirectTo = safeRedirectPath(parsed.data.next ?? null, request.url, successfulFallback);
+  if (isReactivationFlow || (isFirstPasswordFlow && postActivationFallback === "/espace-membre/profil")) {
+    redirectTo = postActivationFallback;
+  }
   const destinationPath = new URL(redirectTo, request.url).pathname;
   if (destinationPath === "/connexion" || destinationPath === "/mot-de-passe" || destinationPath.startsWith("/auth/") || (!isAdmin && destinationPath.startsWith("/admin"))) {
-    redirectTo = fallback;
+    redirectTo = successfulFallback;
   }
 
   const { error: passwordError } = await supabase.auth.updateUser({ password: parsed.data.password });

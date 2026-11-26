@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { QrCode } from "lucide-react";
 
-type Candidate = { id: string; full_name: string; member_number: string; hasQr: boolean };
+type Candidate = { id: string; full_name: string; member_number: string };
 
 export function MemberQrBatchForm({ members }: { members: Candidate[] }) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -16,8 +16,6 @@ export function MemberQrBatchForm({ members }: { members: Candidate[] }) {
 
   async function issueBatch() {
     if (!selected.length || busy) return;
-    if (selected.some((id) => members.find((member) => member.id === id)?.hasQr)
-      && !window.confirm("La réémission invalidera définitivement les QR actifs sélectionnés. Continuer ?")) return;
     setBusy(true);
     setMessage("");
     setProgress({ completed: 0, total: selected.length });
@@ -68,7 +66,7 @@ export function MemberQrBatchForm({ members }: { members: Candidate[] }) {
     <label className="admin-form-checkbox"><input type="checkbox" checked={allSelected} disabled={busy} onChange={(event) => setSelected(event.target.checked ? members.map((member) => member.id) : [])} /> Tout sélectionner</label>
     {members.map((member) => <label className="admin-form-checkbox" key={member.id}>
       <input type="checkbox" checked={selected.includes(member.id)} disabled={busy} onChange={() => setSelected((current) => current.includes(member.id) ? current.filter((id) => id !== member.id) : [...current, member.id])} />
-      <span>{member.full_name} <small>{member.member_number}{member.hasQr ? " · réémettre le QR actif" : " · aucun QR actif"}</small></span>
+      <span>{member.full_name} <small>{member.member_number} · aucun QR actif</small></span>
     </label>)}
     <button className="admin-submit" type="button" disabled={busy || !selected.length} onClick={() => void issueBatch()}>
       <QrCode size={16} aria-hidden="true" /> {busy ? `Émission en cours (${progress.completed}/${progress.total})…` : `Émettre les QR sélectionnés (${selected.length})`}

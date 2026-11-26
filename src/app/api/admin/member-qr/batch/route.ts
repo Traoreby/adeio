@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
 import { issueMemberToken } from "@/lib/member-qr-crypto";
+import { createSupabaseServiceClient } from "@/lib/supabase/service";
 
 const inputSchema = z.object({ memberIds: z.array(z.string().uuid()).min(1).max(100) });
 
@@ -24,6 +25,18 @@ export async function POST(request: NextRequest) {
   if (members.some((member) => member.status !== "active" || member.reactivation_photo_required || member.exit_year === null || member.exit_year <= currentYear)) {
     return NextResponse.json({ error: "La sélection contient un membre inactif ou dont le profil doit être actualisé." }, { status: 409 });
   }
+
+  // The batch operation is for first issuance only. Never let a stale or
+  // hand-crafted request turn it into a QR rotation that revokes a valid token.
+  const serviceClient = createSupabaseServiceClient();
+  if (!serviceClient) return NextResponse.json({ error: "La vérification des QR actifs est indisponible. Aucun QR n’a été modifié." }, { status: 503 });
+  const { data: activeTokens, error: activeTokensError } = await serviceClient
+    .from("member_qr_tokens")
+    .select("member_id")
+    .in("member_id", parsed.data.memberIds)
+    .is("revoked_at", null);
+  if (activeTokensError) return NextResponse.json({ error: "L’état des QR actifs n’a pas pu être vérifié. Aucun QR n’a été modifié." }, { status: 503 });
+  if (activeTokens?.length) return NextResponse.json({ error: "La sélection contient déjà un QR actif. Aucun QR n’a été réémis." }, { status: 409 });
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -54,7 +67,7 @@ export async function POST(request: NextRequest) {
           failed.push(...results.filter((result): result is { memberId: string; ok: false; reason: string } => !result.ok));
           write({ type: "progress", completed: Math.min(offset + chunk.length, members.length), total: members.length, issued });
         }
-        write({ type: "complete", issued, failed, message: `${issued} QR émis sur ${members.length}. Les QR existants des membres traités ont été définitivement révoqués.` });
+        write({ type: "complete", issued, failed, message: `${issued} QR émis sur ${members.length}. Les QR actifs déjà présents n’ont pas été renouvelés.` });
         controller.close();
       })().catch(() => {
         write({ type: "error", message: "Le traitement du lot a été interrompu. Vérifiez les fiches avant de relancer pour éviter une réémission inutile." });

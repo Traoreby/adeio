@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, LockKeyhole, UserRound } from "lucide-react";
 import { MemberPhotoInput } from "@/components/member-photo-input";
 import { ProfileSubmitButton } from "@/components/profile-submit-button";
-import { saveOwnMemberProfileAction } from "@/app/espace-membre/profil/actions";
+import { MemberProfileForm } from "@/components/member-profile-form";
 import { getSignedInUser } from "@/lib/auth";
 import { memberStatusLabels, type MemberStatus } from "@/lib/members";
 
@@ -78,7 +78,7 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
     </article>
 
     {waitingForAdmin ? <div className="member-space-empty"><h2>Réactivation en cours de vérification</h2><p>L’administration vérifiera les nouvelles informations et la photo avant de réactiver votre adhésion et d’émettre un nouveau QR.</p></div> : canEdit ? (
-      <form action={saveOwnMemberProfileAction} className="admin-card member-profile-edit-form">
+      <MemberProfileForm>
         <h2>{isReactivation ? "Informations pour la réactivation" : isNewOnboarding ? "Compléter mon adhésion" : "Mes informations personnelles"}</h2>
         <p>{isReactivation ? "Une nouvelle photo est obligatoire. Votre numéro ADEIO et votre historique seront conservés ; l’administration validera la réactivation." : "Les champs marqués obligatoires sont nécessaires pour tenir votre fiche ADEIO à jour."}</p>
         <div className="admin-form">
@@ -91,7 +91,7 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
           <label className="admin-form-checkbox"><input type="checkbox" name="photo_public_consent" defaultChecked={Boolean(member?.photo_public_consent)} /> J’autorise l’affichage de ma photo sur la page publique de vérification du QR Code.</label>
           <ProfileSubmitButton reactivation={Boolean(isReactivation)} />
         </div>
-      </form>
+      </MemberProfileForm>
     ) : member ? <>
       <div className="admin-card"><h2>Formation et coordonnées</h2><div className="member-profile-details"><div><span>Filière</span><strong>{currentEducation?.study_program ?? "À compléter"}</strong></div><div><span>Établissement</span><strong>{currentEducation?.institution ?? "À compléter"}</strong></div><div><span>Téléphone</span><strong>{details?.phone ?? "Non renseigné"}</strong></div><div><span>Sexe</span><strong>{details?.sex === "female" ? "Femme" : details?.sex === "male" ? "Homme" : details?.sex ? "Valeur historique conservée" : "Non renseigné"}</strong></div></div></div>
       <div className="admin-card"><h2>Historique des formations</h2><div className="member-period-list">{educationRows?.map((item) => <div key={item.id}><strong>{item.study_program} · {item.institution}</strong><span>{item.starts_on} – {item.ends_on ?? "En cours"}</span></div>)}</div>{!educationRows?.length && <p>Aucune formation historisée.</p>}</div>

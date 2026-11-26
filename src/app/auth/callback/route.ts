@@ -92,8 +92,10 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const destinationUrl = new URL(destination, redirectOrigin);
-  if (passwordFlow && destinationUrl.pathname === "/mot-de-passe") destinationUrl.searchParams.set("flow", passwordFlow);
+  // Activation, reactivation and recovery links must all pass through the
+  // password form after their one-time code has been exchanged.
+  const destinationUrl = new URL(passwordFlow ? "/mot-de-passe" : destination, redirectOrigin);
+  if (passwordFlow) destinationUrl.searchParams.set("flow", passwordFlow);
   const response = NextResponse.redirect(destinationUrl);
   response.headers.set("Cache-Control", "no-store, max-age=0");
   return response;
