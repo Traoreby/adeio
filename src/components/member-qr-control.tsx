@@ -9,6 +9,8 @@ export function MemberQrControl({ memberId, hasActiveToken }: { memberId: string
   const [message, setMessage] = useState("");
   const router = useRouter();
   async function request(path: string) {
+    if (path === "/api/admin/member-qr" && hasActiveToken
+      && !window.confirm("Réémettre le QR invalidera définitivement le lien actif actuel. Continuer ?")) return;
     setBusy(true); setMessage("");
     try {
       const response = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ memberId }) });

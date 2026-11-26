@@ -15,13 +15,15 @@ export function MemberCardBatchForm({ members }: { members: { id: string; full_n
     try {
       const response = await fetch("/api/admin/member-cards", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ memberIds: selected }) });
       if (!response.ok) { const body = await response.json().catch(() => null); throw new Error(body?.error ?? "Les cartes n’ont pas pu être générées."); }
+      const photoWarnings = Number(response.headers.get("x-adeio-photo-warning") ?? 0);
       const blob = await response.blob();
       const url = URL.createObjectURL(blob); const anchor = document.createElement("a");
-      anchor.href = url; anchor.download = "cartes-membres-adeio.pdf"; anchor.click(); URL.revokeObjectURL(url);
-      setMessage(`${selected.length} carte(s) générée(s). Les QR actifs ont été réutilisés sans être renouvelés.`);
+      anchor.href = url; anchor.download = "cartes-membres-adeio.pdf"; document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+      setMessage(`${selected.length} carte(s) générée(s). Les QR actifs ont été réutilisés sans être renouvelés.${photoWarnings ? ` ${photoWarnings} photo(s) n’ont pas pu être chargées ; un avatar de remplacement est imprimé.` : ""}`);
     } catch (error) { setMessage(error instanceof Error ? error.message : "Une erreur est survenue."); }
     finally { setBusy(false); }
   }
 
-  return <div className="member-card-batch"><label className="admin-form-checkbox"><input type="checkbox" checked={allSelected} onChange={(event) => setSelected(event.target.checked ? members.map((member) => member.id) : [])} /> Tout sélectionner</label>{members.map((member) => <label className="admin-form-checkbox" key={member.id}><input type="checkbox" checked={selected.includes(member.id)} onChange={() => toggle(member.id)} /><span>{member.full_name} <small>{member.member_number}</small></span></label>)}<button className="admin-submit" type="button" disabled={!selected.length || busy} onClick={() => void downloadCards()}>{busy ? "Création du PDF…" : <>Générer les cartes PDF ({selected.length}) <Download size={15} /></>}</button>{message && <p role="status">{message}</p>}</div>;
+  return <div className="member-card-batch"><label className="admin-form-checkbox"><input type="checkbox" checked={allSelected} disabled={busy} onChange={(event) => setSelected(event.target.checked ? members.map((member) => member.id) : [])} /> Tout sélectionner</label>{members.map((member) => <label className="admin-form-checkbox" key={member.id}><input type="checkbox" checked={selected.includes(member.id)} disabled={busy} onChange={() => toggle(member.id)} /><span>{member.full_name} <small>{member.member_number}</small></span></label>)}<button className="admin-submit" type="button" disabled={!selected.length || busy} onClick={() => void downloadCards()}>{busy ? "Création du PDF…" : <>Générer les cartes PDF ({selected.length}) <Download size={15} /></>}</button>{busy && <p role="status" aria-live="polite">Préparation des photos, QR actifs et planches PDF…</p>}{message && <p role="status" aria-live="polite">{message}</p>}</div>;
 }

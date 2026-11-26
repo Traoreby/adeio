@@ -121,7 +121,7 @@ export async function pauseMemberLifecycleAction() {
   redirect("/admin/parametres?statut=archivage-automatique-pause");
 }
 
-async function sendExistingMemberAccessEmail(supabase: NonNullable<Awaited<ReturnType<typeof import("@/lib/supabase/server").createSupabaseServerClient>>>, userId: string) {
+async function sendExistingMemberAccessEmail(supabase: NonNullable<Awaited<ReturnType<typeof import("@/lib/supabase/server").createSupabaseServerClient>>>, userId: string, flow: "invitation" | "reactivation" = "invitation") {
   const serviceClient = createSupabaseServiceClient();
   if (!serviceClient) return "service-serveur-manquant";
   const { data, error } = await serviceClient.auth.admin.getUserById(userId);
@@ -129,11 +129,12 @@ async function sendExistingMemberAccessEmail(supabase: NonNullable<Awaited<Retur
   if (error || !email) return "compte-email-introuvable";
   const siteUrl = await getSiteBaseUrl();
   if (!siteUrl) return "url-site-manquante";
-  const callback = `${siteUrl}/auth/callback?next=/mot-de-passe`;
   if (!data.user.email_confirmed_at) {
+    const callback = `${siteUrl}/auth/callback?flow=signup&next=/mot-de-passe`;
     const { error: resendError } = await supabase.auth.resend({ type: "signup", email, options: { emailRedirectTo: callback } });
     return resendError ? "envoi-email-impossible" : null;
   }
+  const callback = `${siteUrl}/auth/callback?flow=${flow === "reactivation" ? "reactivation" : "recovery"}&next=/mot-de-passe`;
   const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: callback });
   return recoveryError ? "envoi-email-impossible" : null;
 }
@@ -212,7 +213,7 @@ export async function startMemberReactivationAction(formData: FormData) {
   if (!await hasRequiredMfa(supabase, user.id)) redirect(`/auth/mfa?next=${encodeURIComponent(`/admin/membres/${id.data}`)}`);
   const { data: linkedUser, error } = await supabase.rpc("start_member_reactivation", { p_member_id: id.data });
   if (error || !linkedUser) redirect(`/admin/membres/${id.data}?erreur=reactivation-impossible`);
-  const emailError = await sendExistingMemberAccessEmail(supabase, linkedUser);
+  const emailError = await sendExistingMemberAccessEmail(supabase, linkedUser, "reactivation");
   revalidatePath(`/admin/membres/${id.data}`);
   revalidatePath("/admin/archives");
   redirect(emailError

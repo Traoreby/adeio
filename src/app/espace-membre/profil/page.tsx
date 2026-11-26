@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, CalendarDays, LockKeyhole, UserRound } from "lucide-react";
+import { ArrowLeft, LockKeyhole, UserRound } from "lucide-react";
 import { MemberPhotoInput } from "@/components/member-photo-input";
+import { ProfileSubmitButton } from "@/components/profile-submit-button";
 import { saveOwnMemberProfileAction } from "@/app/espace-membre/profil/actions";
 import { getSignedInUser } from "@/lib/auth";
 import { memberStatusLabels, type MemberStatus } from "@/lib/members";
-import { getConsentedMemberPhotoUrl } from "@/lib/supabase/service";
+import { getMemberPhotoUrl } from "@/lib/supabase/service";
 
 export const metadata: Metadata = { title: "Mon profil · ADEIO" };
 
@@ -17,6 +18,10 @@ const feedback: Record<string, string> = {
   "annee-sortie-atteinte": "Votre année de sortie est atteinte. Seule l’administration peut décider d’une réactivation.",
   "photo-invalide": "La photo doit être une image WebP ou JPEG compressée de 500 Ko maximum.",
   "photo-impossible": "La photo n’a pas pu être enregistrée. Réessayez.",
+  "photo-envoi-impossible": "Le transfert de la photo a échoué. Vérifiez votre connexion et réessayez.",
+  "photo-liaison-impossible": "La photo a été transférée mais n’a pas pu être associée à votre fiche. Le fichier temporaire a été nettoyé ; réessayez.",
+  "consentement-impossible": "Les informations du profil ont été enregistrées, mais le consentement photo n’a pas pu être mis à jour.",
+  "reactivation-envoi-impossible": "Le profil a été mis à jour, mais la demande de réactivation n’a pas pu être transmise. Contactez l’administration.",
   "dossier-introuvable": "Aucun dossier ADEIO en attente n’est associé à ce compte. Contactez l’administration.",
   "enregistrement-impossible": "Le profil n’a pas pu être enregistré. Vérifiez les champs puis réessayez.",
   "reactivation-requise": "Votre compte est archivé. Contactez l’administration pour demander une réactivation.",
@@ -45,7 +50,7 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
     supabase.from("membership_periods").select("id,starts_on,ends_on,note").eq("member_id", member.id).order("starts_on", { ascending: false }),
     supabase.from("member_education_periods").select("id,study_program,institution,starts_on,ends_on,is_current").eq("member_id", member.id).order("starts_on", { ascending: false }),
   ]) : [{ data: null }, { data: null }, { data: null }];
-  const photoUrl = member?.photo_public_consent ? await getConsentedMemberPhotoUrl(member.photo_path) : null;
+  const photoUrl = await getMemberPhotoUrl(member?.photo_path);
   const isReactivation = member?.status === "former" && onboarding?.kind === "reactivation" && onboarding.status === "pending";
   const waitingForAdmin = member?.status === "former" && onboarding?.kind === "reactivation" && onboarding.status === "profile_submitted";
   const isNewOnboarding = onboarding?.kind === "new_member" && onboarding.status === "pending"
@@ -82,7 +87,7 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
           <div className="admin-form-grid"><div><label htmlFor="phone">Téléphone *</label><input id="phone" name="phone" type="tel" required maxLength={40} defaultValue={details?.phone ?? ""} /></div><div><label htmlFor="sex">Sexe{isNewOnboarding || isReactivation || !details?.sex ? " *" : ""}</label><select id="sex" name="sex" required={Boolean(isNewOnboarding || isReactivation || !details?.sex)} defaultValue={details?.sex === "female" || details?.sex === "male" ? details.sex : ""}><option value="">{details?.sex && details.sex !== "female" && details.sex !== "male" ? "Conserver la valeur historique" : "Choisir une option"}</option><option value="female">Femme</option><option value="male">Homme</option></select>{details?.sex && details.sex !== "female" && details.sex !== "male" && <small>Votre ancienne valeur est conservée si vous ne sélectionnez pas un nouveau choix.</small>}</div></div>
           <MemberPhotoInput required={Boolean(isReactivation)} />
           <label className="admin-form-checkbox"><input type="checkbox" name="photo_public_consent" defaultChecked={Boolean(member?.photo_public_consent)} /> J’autorise l’affichage de ma photo sur la page publique de vérification du QR Code.</label>
-          <button className="admin-submit" type="submit">{isReactivation ? "Envoyer à l’administration pour validation" : "Enregistrer mon profil"}<CalendarDays size={15} /></button>
+          <ProfileSubmitButton reactivation={Boolean(isReactivation)} />
         </div>
       </form>
     ) : member ? <>

@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { getSignedInUser } from "@/lib/auth";
 import { memberStatusLabels, type MemberStatus } from "@/lib/members";
-import { getConsentedMemberPhotoUrl } from "@/lib/supabase/service";
+import { getMemberPhotoUrl } from "@/lib/supabase/service";
 
 export const metadata: Metadata = { title: "Espace membre" };
 
@@ -49,7 +49,7 @@ export default async function MemberHomePage() {
 
   if (profile?.must_change_password) redirect("/mot-de-passe");
 
-  const photoUrl = member?.photo_public_consent ? await getConsentedMemberPhotoUrl(member.photo_path) : null;
+  const photoUrl = await getMemberPhotoUrl(member?.photo_path);
   const memberNotices = ((announcements ?? []) as Announcement[])
     .filter((item) => item.visibility === "members")
     .slice(0, 3);

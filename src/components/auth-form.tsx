@@ -49,14 +49,14 @@ export function AuthForm() {
     setMessage(""); setFatalError("");
     const result = await requestPasswordResetAction(values);
     if (result.error) return setFatalError(result.error);
-    setMessage("Si un compte correspond à cette adresse, un lien de récupération vient d’être envoyé. Vérifiez aussi vos courriers indésirables.");
+    setMessage("Si un compte correspond à cette adresse, un e-mail de récupération vient d’être envoyé. Ouvrez la page ADEIO indiquée et saisissez le code à 6 chiffres du message.");
   }
 
   return <div className="auth-card">
     <div className="auth-card-mark"><KeyRound size={19} /></div>
     <div className="eyebrow eyebrow-green">{mode === "login" ? "ESPACE MEMBRE" : "RÉCUPÉRATION DU COMPTE"}</div>
     <h1>{mode === "login" ? "Bon retour parmi nous." : "Réinitialiser le mot de passe"}</h1>
-    <p>{mode === "login" ? "Connectez-vous avec l’adresse e-mail associée à votre compte ADEIO." : "Un lien sécurisé sera envoyé à l’adresse associée à votre compte."}</p>
+    <p>{mode === "login" ? "Connectez-vous avec l’adresse e-mail associée à votre compte ADEIO." : "Un code à usage unique sera envoyé à l’adresse associée à votre compte."}</p>
     {callbackError && !message && <div role="alert" className="form-alert error-alert">{callbackError}</div>}
     {mode === "login" ? <form className="form-stack" onSubmit={credentials.handleSubmit(onLogin)}>
       <label htmlFor="login-email">Adresse e-mail</label><div className="input-with-icon"><Mail size={17} aria-hidden="true" /><input id="login-email" type="email" autoComplete="off" placeholder="Saisissez votre adresse e-mail" aria-invalid={Boolean(credentials.formState.errors.email)} aria-describedby={credentials.formState.errors.email ? "login-email-error" : undefined} {...credentials.register("email")} /></div>

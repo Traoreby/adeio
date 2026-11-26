@@ -5,7 +5,7 @@ import sharp from "sharp";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
 import { decryptMemberToken, type EncryptedMemberToken } from "@/lib/member-qr-crypto";
-import { getConsentedMemberPhotoUrl, createSupabaseServiceClient } from "@/lib/supabase/service";
+import { getMemberPhotoUrls, createSupabaseServiceClient } from "@/lib/supabase/service";
 import { getSiteBaseUrl } from "@/lib/site-url";
 
 const inputSchema = z.object({ memberIds: z.array(z.string().uuid()).min(1).max(100) });
@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
 
   const baseUrl = await getSiteBaseUrl();
   if (!baseUrl) return NextResponse.json({ error: "L’URL publique du site n’est pas configurée." }, { status: 503 });
+  const photoUrls = await getMemberPhotoUrls(members.map((member) => member.photo_path));
   let prepared;
   try {
     prepared = await Promise.all(members.map(async (member) => {
@@ -82,8 +83,9 @@ export async function POST(request: NextRequest) {
       const education = (member.member_education_periods ?? []).find((item: { is_current: boolean }) => item.is_current) as { study_program?: string; institution?: string } | undefined;
       const currentPosition = (member.executive_members ?? []).find((assignment: { term?: { is_current?: boolean }[] }) => assignment.term?.[0]?.is_current) as { position?: { title?: string }[] } | undefined;
       let photo: Uint8Array | undefined;
+      let photoMissing = false;
       if (member.photo_path) {
-        const signed = await getConsentedMemberPhotoUrl(member.photo_path);
+        const signed = photoUrls.get(member.photo_path);
         if (signed) {
           try {
             const response = await fetch(signed, { signal: AbortSignal.timeout(5000) });
@@ -93,8 +95,9 @@ export async function POST(request: NextRequest) {
             }
           } catch { /* Le QR et les informations imprimées restent vérifiables. */ }
         }
+        photoMissing = !photo;
       }
-      return { member, qr, photo, education, position: currentPosition?.position?.[0]?.title ?? "Membre ADEIO" };
+      return { member, qr, photo, photoMissing, education, position: currentPosition?.position?.[0]?.title ?? "Membre ADEIO" };
     }));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Le PDF n’a pas pu être préparé. Vérifiez la clé de chiffrement." }, { status: 503 });
@@ -125,6 +128,11 @@ export async function POST(request: NextRequest) {
           const photo = await pdf.embedJpg(item.photo);
           if (photo) { front.drawImage(photo, { x: photoX, y: y + 48, width: 43, height: 50 }); textX = photoX + 52; }
         } catch { /* Une photo non décodable ne bloque pas l’impression de la carte. */ }
+      } else {
+        front.drawRectangle({ x: photoX, y: y + 48, width: 43, height: 50, color: rgb(0.94, 0.96, 0.94) });
+        front.drawCircle({ x: photoX + 21.5, y: y + 81, size: 7, color: rgb(0.68, 0.73, 0.69) });
+        front.drawEllipse({ x: photoX + 21.5, y: y + 59, xScale: 13, yScale: 8, color: rgb(0.68, 0.73, 0.69) });
+        textX = photoX + 52;
       }
       const name = `${item.member.first_name} ${item.member.last_name}`;
       front.drawText(fitText(name, x + cardW - 83 - textX, bold, 9), { x: textX, y: y + 83, size: 9, font: bold, color: DARK });
@@ -145,5 +153,6 @@ export async function POST(request: NextRequest) {
   }
 
   const bytes = await pdf.save();
-  return new NextResponse(new Uint8Array(bytes), { headers: { "content-type": "application/pdf", "content-disposition": "attachment; filename=cartes-membres-adeio-recto-verso.pdf", "cache-control": "no-store" } });
+  const photoWarnings = prepared.filter((item) => item.photoMissing).length;
+  return new NextResponse(new Uint8Array(bytes), { headers: { "content-type": "application/pdf", "content-disposition": "attachment; filename=cartes-membres-adeio-recto-verso.pdf", "cache-control": "no-store", "x-adeio-photo-warning": String(photoWarnings) } });
 }

@@ -84,22 +84,22 @@ export async function saveOwnMemberProfileAction(formData: FormData) {
   if (photo) {
     const storagePath = `${memberId}/${randomUUID()}.${photo.type === "image/webp" ? "webp" : "jpg"}`;
     const { error: uploadError } = await supabase.storage.from("member-photos").upload(storagePath, photo, { contentType: photo.type, upsert: false });
-    if (uploadError) redirect("/espace-membre/profil?erreur=photo-impossible");
+    if (uploadError) redirect("/espace-membre/profil?erreur=photo-envoi-impossible");
     const { data: previous, error: photoLinkError } = await supabase.rpc("set_own_member_photo", { p_storage_path: storagePath });
     if (photoLinkError) {
       await supabase.storage.from("member-photos").remove([storagePath]);
-      redirect("/espace-membre/profil?erreur=photo-impossible");
+      redirect("/espace-membre/profil?erreur=photo-liaison-impossible");
     }
     previousPhotoPath = typeof previous === "string" ? previous : previousPhotoPath;
     if (previousPhotoPath && previousPhotoPath !== storagePath) await supabase.storage.from("member-photos").remove([previousPhotoPath]);
   }
 
   const { error: consentError } = await supabase.rpc("set_own_member_photo_consent", { p_consent: formData.get("photo_public_consent") === "on" });
-  if (consentError) redirect("/espace-membre/profil?erreur=enregistrement-impossible");
+  if (consentError) redirect("/espace-membre/profil?erreur=consentement-impossible");
 
   if (isReactivation) {
     const { error } = await supabase.rpc("submit_own_reactivation_profile");
-    if (error) redirect("/espace-membre/profil?erreur=photo-reactivation-requise");
+    if (error) redirect("/espace-membre/profil?erreur=reactivation-envoi-impossible");
   }
 
   revalidatePath("/espace-membre");

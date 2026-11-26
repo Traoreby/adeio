@@ -27,5 +27,17 @@ double_confirm_changes = true
 secure_email_change = true
 enable_confirmations = true
 
+[auth.email.template.invite]
+subject = "Votre invitation à rejoindre ADEIO"
+content_path = "./supabase/templates/invite.html"
+
+[auth.email.template.confirmation]
+subject = "Code d’activation de votre compte ADEIO"
+content_path = "./supabase/templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Code de réinitialisation de votre mot de passe ADEIO"
+content_path = "./supabase/templates/recovery.html"
+
 [storage]
 enabled = true

@@ -536,6 +536,16 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .member-card-batch .admin-form-checkbox { display: flex; align-items: center; gap: 9px; padding: 9px 0; border-top: 1px solid #edf0ed; font-size: 13px !important; }
 .member-card-batch .admin-form-checkbox small { margin-left: 6px; color: #5f6a62; font-size: 11px; }
 .member-card-batch .admin-submit { display: inline-flex; align-items: center; gap: 8px; justify-self: start; margin-top: 8px; }
+.member-qr-batch { display: grid; gap: 12px; }
+.member-qr-batch > p { margin: 0; color: #344139; font-size: 15px; line-height: 1.6; }
+.member-qr-batch .admin-form-checkbox { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 10px 0; border-top: 1px solid #edf0ed; font-size: 15px !important; }
+.member-qr-batch .admin-form-checkbox span { min-width: 0; overflow-wrap: anywhere; }
+.member-qr-batch .admin-form-checkbox small { display: block; margin-top: 3px; color: #526056; font-size: 13px; }
+.member-qr-batch .admin-submit { display: inline-flex; align-items: center; gap: 8px; justify-self: start; margin-top: 4px; }
+.qr-batch-progress { display: grid; gap: 5px; max-width: 440px; }
+.qr-batch-progress progress { width: 100%; accent-color: #009e60; }
+.qr-batch-progress p { margin: 0; color: #344139; font-size: 14px; }
+.activation-code-input { font-size: 22px !important; font-weight: 700; letter-spacing: .25em; text-align: center; }
 .member-space-page { min-height: 60vh; background: #fafcf9; }
 .member-space-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
 .member-space-heading h1 { margin: 8px 0; font-size: clamp(28px, 4vw, 38px); letter-spacing: -.04em; }

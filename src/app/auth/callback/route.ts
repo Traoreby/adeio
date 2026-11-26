@@ -5,6 +5,8 @@ import { safeRedirectPath } from "@/lib/redirect";
 
 const RECOVERY_COOKIE = "adeio-password-recovery";
 const PASSWORD_API_PATH = "/api/account/password";
+const PASSWORD_FLOW_COOKIE = "adeio-password-flow";
+const PASSWORD_FLOWS = new Set(["invitation", "signup", "recovery", "reactivation"]);
 
 function errorRedirect(origin: string, error: string) {
   const response = NextResponse.redirect(new URL(`/connexion?erreur=${error}&recovery=1`, origin));
@@ -31,7 +33,8 @@ export async function GET(request: NextRequest) {
 
   const code = requestUrl.searchParams.get("code");
   const destination = safeRedirectPath(requestUrl.searchParams.get("next"), request.url, "/espace-membre");
-  const isRecoveryFlow = requestUrl.searchParams.get("flow") === "recovery";
+  const requestedFlow = requestUrl.searchParams.get("flow");
+  const passwordFlow = requestedFlow && PASSWORD_FLOWS.has(requestedFlow) ? requestedFlow : null;
   const authError = requestUrl.searchParams.get("error");
   const authErrorCode = requestUrl.searchParams.get("error_code");
 
@@ -70,17 +73,28 @@ export async function GET(request: NextRequest) {
   }
 
   const cookieStore = await cookies();
-  if (isRecoveryFlow) {
-    cookieStore.set(RECOVERY_COOKIE, "1", {
+  if (passwordFlow) {
+    cookieStore.set(PASSWORD_FLOW_COOKIE, passwordFlow, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: PASSWORD_API_PATH,
       maxAge: 10 * 60,
     });
+    if (passwordFlow === "recovery") {
+      cookieStore.set(RECOVERY_COOKIE, "1", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: PASSWORD_API_PATH,
+        maxAge: 10 * 60,
+      });
+    }
   }
 
-  const response = NextResponse.redirect(new URL(destination, redirectOrigin));
+  const destinationUrl = new URL(destination, redirectOrigin);
+  if (passwordFlow && destinationUrl.pathname === "/mot-de-passe") destinationUrl.searchParams.set("flow", passwordFlow);
+  const response = NextResponse.redirect(destinationUrl);
   response.headers.set("Cache-Control", "no-store, max-age=0");
   return response;
 }

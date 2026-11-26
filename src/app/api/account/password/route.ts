@@ -10,6 +10,7 @@ const passwordSchema = z.object({
   next: z.string().max(2048).optional(),
 });
 const RECOVERY_COOKIE = "adeio-password-recovery";
+const PASSWORD_FLOW_COOKIE = "adeio-password-flow";
 const PASSWORD_API_PATH = "/api/account/password";
 
 function errorResponse(error: string, status: number) {
@@ -36,13 +37,16 @@ export async function POST(request: NextRequest) {
 
   const cookieStore = await cookies();
   const isRecoverySession = cookieStore.get(RECOVERY_COOKIE)?.value === "1";
+  const passwordFlow = cookieStore.get(PASSWORD_FLOW_COOKIE)?.value;
   const [roleResult, profileResult] = await Promise.all([
     supabase.from("user_roles").select("role").eq("user_id", user.id),
     supabase.from("profiles").select("must_change_password").eq("user_id", user.id).maybeSingle(),
   ]);
   if (roleResult.error || !roleResult.data?.length) return errorResponse("Le rôle de ce compte n’a pas pu être vérifié. Contactez l’administration.", 503);
   if (profileResult.error || !profileResult.data) return errorResponse("Le profil de ce compte n’a pas pu être vérifié. Contactez l’administration.", 503);
-  if (!isRecoverySession && !profileResult.data.must_change_password) {
+  const isFirstPasswordFlow = (passwordFlow === "invitation" || passwordFlow === "signup") && profileResult.data.must_change_password;
+  const isReactivationFlow = passwordFlow === "reactivation" && profileResult.data.must_change_password;
+  if (!isRecoverySession && !isFirstPasswordFlow && !isReactivationFlow && !profileResult.data.must_change_password) {
     return errorResponse("Cette session ne provient pas d’une récupération de mot de passe. Connectez-vous et demandez un nouveau lien si nécessaire.", 403);
   }
   const serviceClient = createSupabaseServiceClient();
@@ -72,6 +76,13 @@ export async function POST(request: NextRequest) {
   if (profileError) return errorResponse("Le mot de passe a été mis à jour, mais la finalisation du compte a échoué. Contactez l’administration.", 503);
 
   cookieStore.set(RECOVERY_COOKIE, "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: PASSWORD_API_PATH,
+    maxAge: 0,
+  });
+  cookieStore.set(PASSWORD_FLOW_COOKIE, "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
