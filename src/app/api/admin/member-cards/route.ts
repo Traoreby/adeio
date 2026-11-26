@@ -5,14 +5,48 @@ import sharp from "sharp";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
 import { decryptMemberToken, type EncryptedMemberToken } from "@/lib/member-qr-crypto";
-import { getMemberPhotoUrls, createSupabaseServiceClient } from "@/lib/supabase/service";
+import { createSupabaseServiceClient, getMemberPhotoUrls } from "@/lib/supabase/service";
 import { getSiteBaseUrl } from "@/lib/site-url";
 
-const inputSchema = z.object({ memberIds: z.array(z.string().uuid()).min(1).max(100) });
+const inputSchema = z.object({ issuanceIds: z.array(z.string().uuid()).min(1).max(100) });
 const ORANGE = rgb(0.969, 0.498, 0);
 const GREEN = rgb(0, 0.620, 0.376);
 const DARK = rgb(0.12, 0.16, 0.13);
 const MUTED = rgb(0.32, 0.37, 0.33);
+
+type CardSnapshot = {
+  first_name: string;
+  last_name: string;
+  member_number: string;
+  joined_year: number;
+  study_program: string;
+  institution: string;
+  status: string;
+  photo_path: string | null;
+  issued_on: string;
+  valid_until: string;
+  association: string;
+  site_url: string;
+};
+type Issuance = {
+  id: string;
+  member_id: string;
+  qr_token_id: string;
+  signature_storage_path: string;
+  seal_storage_path: string;
+  issued_at: string;
+  issued_on: string;
+  valid_until: string;
+  member_snapshot: CardSnapshot;
+};
+type PreparedCard = {
+  issuance: Issuance;
+  qr: Buffer;
+  photo?: Uint8Array;
+  photoMissing: boolean;
+  signature: Uint8Array;
+  seal: Uint8Array;
+};
 
 function fitText(text: string, maxWidth: number, font: PDFFont, size: number) {
   let value = text;
@@ -34,73 +68,90 @@ function drawShell(page: PDFPage, x: number, y: number, cardW: number, cardH: nu
   page.drawRectangle({ x: x + cardW * 0.66, y: y + cardH - 5, width: cardW * 0.34, height: 5, color: GREEN });
 }
 
+function formatDate(value: string) {
+  return new Date(`${value}T12:00:00+05:30`).toLocaleDateString("fr-FR", { timeZone: "Asia/Kolkata" });
+}
+
+async function loadPng(url: string) {
+  const response = await fetch(url, { cache: "no-store", signal: AbortSignal.timeout(7000) });
+  const type = response.headers.get("content-type") ?? "";
+  if (!response.ok || !type.startsWith("image/png")) throw new Error("Un élément officiel n’a pas pu être chargé.");
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 export async function POST(request: NextRequest) {
   const origin = request.headers.get("origin");
   if (origin && new URL(origin).host !== request.nextUrl.host) return NextResponse.json({ error: "Origine de requête invalide." }, { status: 403 });
   const parsed = inputSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success || new Set(parsed.data?.memberIds).size !== parsed.data?.memberIds.length) return NextResponse.json({ error: "Sélection de membres invalide (100 cartes maximum)." }, { status: 400 });
+  if (!parsed.success || new Set(parsed.data?.issuanceIds).size !== parsed.data?.issuanceIds.length) {
+    return NextResponse.json({ error: "Sélection de cartes invalide (100 maximum)." }, { status: 400 });
+  }
   const { supabase, user, roles } = await getSignedInUser();
   if (!supabase || !user) return NextResponse.json({ error: "Connectez-vous pour continuer." }, { status: 401 });
-  if (!roles.some((role) => role === "admin" || role === "super_admin")) return NextResponse.json({ error: "Accès réservé à l’administration." }, { status: 403 });
+  if (!roles.includes("super_admin")) return NextResponse.json({ error: "La génération des cartes délivrées est réservée au Super Admin." }, { status: 403 });
   if (!await hasRequiredMfa(supabase, user.id)) return NextResponse.json({ error: "Validez votre authentification à deux facteurs." }, { status: 403 });
 
-  const { data: members, error } = await supabase.from("members").select("id,member_number,first_name,last_name,joined_year,exit_year,status,reactivation_photo_required,photo_path,photo_public_consent,member_education_periods(study_program,institution,is_current),executive_members(position:executive_positions(title),term:executive_terms(is_current))").in("id", parsed.data.memberIds);
-  if (error || !members || members.length !== parsed.data.memberIds.length) return NextResponse.json({ error: "Un ou plusieurs membres sont introuvables." }, { status: 404 });
-  const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
-  if (members.some((member) => member.status !== "active" || member.reactivation_photo_required || member.exit_year === null || member.exit_year <= currentYear)) {
-    return NextResponse.json({ error: "Une carte ne peut être générée que pour un membre actif dont l’année de sortie n’est pas atteinte." }, { status: 409 });
+  const { data: rows, error } = await supabase.from("member_card_issuances")
+    .select("id,member_id,qr_token_id,signature_storage_path,seal_storage_path,issued_at,issued_on,valid_until,member_snapshot")
+    .in("id", parsed.data.issuanceIds);
+  if (error || !rows || rows.length !== parsed.data.issuanceIds.length) {
+    return NextResponse.json({ error: "Une carte délivrée est introuvable ou vous n’êtes pas autorisé à la consulter." }, { status: 404 });
   }
-
-  const serviceClient = createSupabaseServiceClient();
-  if (!serviceClient) return NextResponse.json({ error: "Le service sécurisé de cartes n’est pas configuré." }, { status: 503 });
-  const { data: tokens, error: tokenError } = await serviceClient.from("member_qr_tokens")
-    .select("member_id,token_hash,encrypted_token,encryption_nonce,encryption_tag,encryption_key_version")
-    .in("member_id", parsed.data.memberIds).is("revoked_at", null);
-  if (tokenError) return NextResponse.json({ error: "Les QR actifs n’ont pas pu être lus côté serveur." }, { status: 503 });
-  const tokenByMember = new Map((tokens ?? []).map((token) => [token.member_id, token]));
-  if (members.some((member) => {
-    const token = tokenByMember.get(member.id);
-    return !token?.encrypted_token || !token.encryption_nonce || !token.encryption_tag || !token.encryption_key_version;
-  })) {
-    return NextResponse.json({ error: "Certains QR sont historiques et ne sont pas réimprimables. Réémettez-les explicitement depuis la fiche membre, puis relancez le PDF." }, { status: 409 });
-  }
-
+  const issuances = rows as unknown as Issuance[];
+  const service = createSupabaseServiceClient();
+  if (!service) return NextResponse.json({ error: "Le service sécurisé de cartes n’est pas configuré." }, { status: 503 });
   const baseUrl = await getSiteBaseUrl();
   if (!baseUrl) return NextResponse.json({ error: "L’URL publique du site n’est pas configurée." }, { status: 503 });
-  const photoUrls = await getMemberPhotoUrls(members.map((member) => member.photo_path));
-  let prepared;
+
+  const tokenIds = issuances.map((item) => item.qr_token_id);
+  const [{ data: tokens, error: tokenError }, photoUrls, { data: signedAssets, error: assetError }] = await Promise.all([
+    service.from("member_qr_tokens").select("id,token_hash,encrypted_token,encryption_nonce,encryption_tag,encryption_key_version,revoked_at").in("id", tokenIds),
+    getMemberPhotoUrls(issuances.map((item) => item.member_snapshot.photo_path)),
+    service.storage.from("member-card-official-assets").createSignedUrls(
+      [...new Set(issuances.flatMap((item) => [item.signature_storage_path, item.seal_storage_path]))], 300,
+    ),
+  ]);
+  if (tokenError || assetError || !tokens || !signedAssets) return NextResponse.json({ error: "Les ressources sécurisées n’ont pas pu être chargées." }, { status: 503 });
+  const tokensById = new Map(tokens.map((token) => [token.id, token]));
+  const signedByPath = new Map(signedAssets.flatMap((item) => item.path && item.signedUrl ? [[item.path, item.signedUrl] as const] : []));
+  if (issuances.some((item) => !tokensById.has(item.qr_token_id) || !signedByPath.has(item.signature_storage_path) || !signedByPath.has(item.seal_storage_path))) {
+    return NextResponse.json({ error: "Le QR ou un élément officiel lié à une carte n’est plus disponible." }, { status: 409 });
+  }
+  if (issuances.some((item) => tokensById.get(item.qr_token_id)?.revoked_at)) {
+    return NextResponse.json({ error: "Le QR de cette carte a été révoqué. Elle ne peut plus être réimprimée comme carte active." }, { status: 409 });
+  }
+
+  let prepared: PreparedCard[];
   try {
-    prepared = await Promise.all(members.map(async (member) => {
-      const stored = tokenByMember.get(member.id)!;
+    prepared = await Promise.all(issuances.map(async (issuance) => {
+      const stored = tokensById.get(issuance.qr_token_id)!;
       const token = decryptMemberToken({
         tokenHash: stored.token_hash,
-        encryptedToken: stored.encrypted_token!,
-        nonce: stored.encryption_nonce!,
-        tag: stored.encryption_tag!,
-        keyVersion: stored.encryption_key_version!,
+        encryptedToken: stored.encrypted_token,
+        nonce: stored.encryption_nonce,
+        tag: stored.encryption_tag,
+        keyVersion: stored.encryption_key_version,
       } satisfies EncryptedMemberToken);
       const qr = await QRCode.toBuffer(`${baseUrl}/verification/${token}`, { width: 260, margin: 1, errorCorrectionLevel: "M" });
-      const education = (member.member_education_periods ?? []).find((item: { is_current: boolean }) => item.is_current) as { study_program?: string; institution?: string } | undefined;
-      const currentPosition = (member.executive_members ?? []).find((assignment: { term?: { is_current?: boolean }[] }) => assignment.term?.[0]?.is_current) as { position?: { title?: string }[] } | undefined;
       let photo: Uint8Array | undefined;
-      let photoMissing = false;
-      if (member.photo_path) {
-        const signed = photoUrls.get(member.photo_path);
-        if (signed) {
-          try {
-            const response = await fetch(signed, { signal: AbortSignal.timeout(5000) });
-            const type = response.headers.get("content-type") ?? "";
-            if (response.ok && type.startsWith("image/")) {
-              photo = new Uint8Array(await sharp(Buffer.from(await response.arrayBuffer())).jpeg({ quality: 85 }).toBuffer());
-            }
-          } catch { /* Le QR et les informations imprimées restent vérifiables. */ }
+      const photoPath = issuance.member_snapshot.photo_path;
+      const signedPhoto = photoPath ? photoUrls.get(photoPath) : undefined;
+      if (signedPhoto) {
+        const response = await fetch(signedPhoto, { cache: "no-store", signal: AbortSignal.timeout(7000) }).catch(() => null);
+        const type = response?.headers.get("content-type") ?? "";
+        if (response?.ok && type.startsWith("image/")) {
+          photo = new Uint8Array(await sharp(Buffer.from(await response.arrayBuffer())).jpeg({ quality: 85 }).toBuffer());
         }
-        photoMissing = !photo;
       }
-      return { member, qr, photo, photoMissing, education, position: currentPosition?.position?.[0]?.title ?? "Membre ADEIO" };
+      const [signature, seal] = await Promise.all([
+        loadPng(signedByPath.get(issuance.signature_storage_path)!),
+        loadPng(signedByPath.get(issuance.seal_storage_path)!),
+      ]);
+      return { issuance, qr, photo, photoMissing: !photo, signature, seal };
     }));
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Le PDF n’a pas pu être préparé. Vérifiez la clé de chiffrement." }, { status: 503 });
+  } catch (prepareError) {
+    const message = prepareError instanceof Error ? prepareError.message : "Le PDF n’a pas pu être préparé.";
+    return NextResponse.json({ error: message }, { status: 503 });
   }
 
   const pdf = await PDFDocument.create();
@@ -113,6 +164,7 @@ export async function POST(request: NextRequest) {
     const back = pdf.addPage([595.28, 841.89]);
     for (let localIndex = 0; localIndex < pageMembers.length; localIndex += 1) {
       const item = pageMembers[localIndex];
+      const snap = item.issuance.member_snapshot;
       const { cardW, cardH, x, y } = cardPosition(localIndex);
       drawShell(front, x, y, cardW, cardH);
       drawShell(back, x, y, cardW, cardH);
@@ -126,33 +178,46 @@ export async function POST(request: NextRequest) {
       if (item.photo) {
         try {
           const photo = await pdf.embedJpg(item.photo);
-          if (photo) { front.drawImage(photo, { x: photoX, y: y + 48, width: 43, height: 50 }); textX = photoX + 52; }
-        } catch { /* Une photo non décodable ne bloque pas l’impression de la carte. */ }
-      } else {
+          front.drawImage(photo, { x: photoX, y: y + 48, width: 43, height: 50 });
+          textX = photoX + 52;
+        } catch { /* Si l’image est illisible, le PDF conserve une vignette de remplacement. */ }
+      }
+      if (!item.photo) {
         front.drawRectangle({ x: photoX, y: y + 48, width: 43, height: 50, color: rgb(0.94, 0.96, 0.94) });
         front.drawCircle({ x: photoX + 21.5, y: y + 81, size: 7, color: rgb(0.68, 0.73, 0.69) });
         front.drawEllipse({ x: photoX + 21.5, y: y + 59, xScale: 13, yScale: 8, color: rgb(0.68, 0.73, 0.69) });
         textX = photoX + 52;
       }
-      const name = `${item.member.first_name} ${item.member.last_name}`;
-      front.drawText(fitText(name, x + cardW - 83 - textX, bold, 9), { x: textX, y: y + 83, size: 9, font: bold, color: DARK });
-      front.drawText(fitText(item.member.member_number, 140, regular, 8), { x: textX, y: y + 68, size: 8, font: regular, color: DARK });
-      front.drawText(fitText(item.education?.study_program ?? "Étudiant ADEIO", 140, regular, 7), { x: textX, y: y + 55, size: 7, font: regular, color: GREEN });
-      front.drawText(fitText(item.education?.institution ?? "KIIT University", 140, regular, 6.5), { x: photoX, y: y + 32, size: 6.5, font: regular, color: MUTED });
-      front.drawText(`MEMBRE ACTIF · ADHÉSION ${item.member.joined_year}`, { x: photoX, y: y + 17, size: 6.5, font: bold, color: GREEN });
+      front.drawText(fitText(`${snap.first_name} ${snap.last_name}`, x + cardW - 83 - textX, bold, 9), { x: textX, y: y + 83, size: 9, font: bold, color: DARK });
+      front.drawText(fitText(snap.member_number, 140, regular, 8), { x: textX, y: y + 68, size: 8, font: regular, color: DARK });
+      front.drawText(fitText(snap.study_program, 140, regular, 7), { x: textX, y: y + 55, size: 7, font: regular, color: GREEN });
+      front.drawText(fitText(snap.status, 140, bold, 6.5), { x: textX, y: y + 43, size: 6.5, font: bold, color: GREEN });
+      front.drawText(fitText(snap.institution, 205, regular, 6.5), { x: photoX, y: y + 32, size: 6.5, font: regular, color: MUTED });
+      front.drawText(`${snap.status} · ADHÉSION ${snap.joined_year}`, { x: photoX, y: y + 17, size: 6.5, font: bold, color: GREEN });
 
       back.drawText("ASSOCIATION DES ÉTUDIANTS", { x: x + 14, y: y + cardH - 29, size: 8, font: bold, color: DARK });
       back.drawText("IVOIRIENS DE L’ODISHA", { x: x + 14, y: y + cardH - 43, size: 8, font: bold, color: DARK });
       back.drawText("KIIT University · Bhubaneswar, Inde", { x: x + 14, y: y + cardH - 65, size: 7, font: regular, color: MUTED });
       back.drawText("NUMÉRO ADEIO", { x: x + 14, y: y + 61, size: 6.5, font: bold, color: GREEN });
-      back.drawText(fitText(item.member.member_number, 210, bold, 10), { x: x + 14, y: y + 44, size: 10, font: bold, color: DARK });
-      back.drawText(`Adhésion initiale : ${item.member.joined_year}`, { x: x + 14, y: y + 28, size: 7, font: regular, color: MUTED });
-      back.drawText(item.member.exit_year ? `Valide jusqu’au 31/12/${item.member.exit_year - 1}` : "Validité liée au statut actif", { x: x + 14, y: y + 15, size: 7, font: regular, color: MUTED });
-      back.drawText("Vérifiez le QR code imprimé au recto.", { x: x + cardW - 135, y: y + 15, size: 6.5, font: regular, color: GREEN });
+      back.drawText(fitText(snap.member_number, 210, bold, 10), { x: x + 14, y: y + 44, size: 10, font: bold, color: DARK });
+      back.drawText(`Adhésion : ${snap.joined_year}`, { x: x + 14, y: y + 30, size: 7, font: regular, color: MUTED });
+      back.drawText(`Délivrée le ${formatDate(item.issuance.issued_on)}`, { x: x + 14, y: y + 19, size: 6.5, font: regular, color: MUTED });
+      back.drawText(`Valide jusqu’au ${formatDate(item.issuance.valid_until)}`, { x: x + 14, y: y + 8, size: 6.5, font: bold, color: GREEN });
+      back.drawText("adeio.vercel.app · Scannez le QR pour vérifier cette carte.", { x: x + 14, y: y + cardH - 80, size: 6, font: regular, color: MUTED });
+      const signature = await pdf.embedPng(item.signature);
+      const seal = await pdf.embedPng(item.seal);
+      back.drawImage(seal, { x: x + cardW - 43, y: y + 35, width: 28, height: 28 });
+      back.drawImage(signature, { x: x + cardW - 103, y: y + 22, width: 55, height: 20 });
+      back.drawText("Signature autorisée", { x: x + cardW - 105, y: y + 14, size: 5.5, font: regular, color: MUTED });
     }
   }
 
   const bytes = await pdf.save();
   const photoWarnings = prepared.filter((item) => item.photoMissing).length;
-  return new NextResponse(new Uint8Array(bytes), { headers: { "content-type": "application/pdf", "content-disposition": "attachment; filename=cartes-membres-adeio-recto-verso.pdf", "cache-control": "no-store", "x-adeio-photo-warning": String(photoWarnings) } });
+  return new NextResponse(new Uint8Array(bytes), { headers: {
+    "content-type": "application/pdf",
+    "content-disposition": "attachment; filename=cartes-membres-adeio-recto-verso.pdf",
+    "cache-control": "no-store",
+    "x-adeio-photo-warning": String(photoWarnings),
+  } });
 }

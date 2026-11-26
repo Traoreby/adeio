@@ -897,6 +897,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .admin-submit:disabled { opacity: .62; cursor: wait; transform: none; box-shadow: none; }
 .admin-submit-secondary { border-color: #007a49; background: #fff; color: #006b40; }
 .admin-submit-secondary:hover:not(:disabled) { background: #edf6ef; }
+.admin-form-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.admin-card-asset-preview { display: flex; min-height: 132px; align-items: center; justify-content: flex-start; margin: 14px 0; padding: 14px; overflow: hidden; border: 1px solid #dbe6dd; border-radius: 14px; background: linear-gradient(135deg,#f6faf7,#fff); }
+.admin-card-asset-preview img { max-width: 320px; max-height: 150px; object-fit: contain; }
+.member-period-list > div .member-period-form { margin-top: 12px; padding-top: 12px; border-top: 1px solid #edf0ed; }
 .admin-form-checkbox { display: flex !important; align-items: flex-start; gap: 10px; color: #27342c; font-size: 14px !important; line-height: 1.5; }
 .admin-form .admin-form-checkbox input { width: 18px; min-width: 18px; min-height: 18px; margin-top: 2px; }
 .admin-form-checkbox small { color: #4d5b52 !important; font-size: 14px !important; }
