@@ -1,14 +1,7 @@
-<!doctype html>
-<html lang="fr">
-  <body style="margin:0;background:#f4f7f4;color:#17211a;font-family:Arial,sans-serif">
-    <main style="max-width:560px;margin:32px auto;padding:32px;background:#fff;border-radius:18px">
-      <p style="font-weight:700;letter-spacing:.08em;color:#009e60">ADEIO · SÉCURITÉ DU COMPTE</p>
-      <h1 style="font-size:24px">Réinitialisation du mot de passe</h1>
-      <p>Une demande de réinitialisation a été faite pour votre compte ADEIO. Ouvrez la page sécurisée ci-dessous et saisissez le code à usage unique.</p>
-      <p><a href="{{ .SiteURL }}/activer-compte?flow=recovery" style="display:inline-block;padding:13px 20px;background:#009e60;color:#fff;text-decoration:none;border-radius:10px">Continuer sur ADEIO</a></p>
-      <p>Code à usage unique :</p>
-      <p style="padding:16px;background:#f4f7f4;border-radius:10px;font-size:26px;font-weight:700;letter-spacing:.18em;text-align:center">{{ .Token }}</p>
-      <p>Si vous n’avez pas demandé cette réinitialisation, ignorez cet e-mail. Le code ne peut être utilisé qu’une seule fois.</p>
-    </main>
-  </body>
-</html>
+<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#17211a;line-height:1.6">
+  <h2>Choisissez un nouveau mot de passe</h2>
+  <p>Une demande de récupération a été effectuée pour votre compte ADEIO. Ouvrez le lien ci-dessous, confirmez la vérification sur le site, puis choisissez votre nouveau mot de passe.</p>
+  <p><a href="{{ .RedirectTo }}&amp;token_hash={{ .TokenHash }}&amp;type=recovery" style="display:inline-block;padding:12px 20px;border-radius:8px;background:#009e60;color:#fff;text-decoration:none;font-weight:bold">Continuer la récupération</a></p>
+  <p>Ce lien est à usage unique. Si vous ne l’avez pas demandé, ignorez ce message.</p>
+  <p>Association des Étudiants Ivoiriens de l’Odisha · KIIT University</p>
+</div>

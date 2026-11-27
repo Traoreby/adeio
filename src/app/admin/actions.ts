@@ -130,11 +130,11 @@ async function sendExistingMemberAccessEmail(supabase: NonNullable<Awaited<Retur
   const siteUrl = await getSiteBaseUrl();
   if (!siteUrl) return "url-site-manquante";
   if (!data.user.email_confirmed_at) {
-    const callback = `${siteUrl}/auth/callback?flow=signup&next=/mot-de-passe`;
+    const callback = `${siteUrl}/auth/verify?flow=signup&next=/mot-de-passe`;
     const { error: resendError } = await supabase.auth.resend({ type: "signup", email, options: { emailRedirectTo: callback } });
     return resendError ? "envoi-email-impossible" : null;
   }
-  const callback = `${siteUrl}/auth/callback?flow=${flow === "reactivation" ? "reactivation" : "recovery"}&next=/mot-de-passe`;
+  const callback = `${siteUrl}/auth/verify?flow=${flow === "reactivation" ? "reactivation" : "recovery"}&next=/mot-de-passe`;
   const { error: recoveryError } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: callback });
   return recoveryError ? "envoi-email-impossible" : null;
 }

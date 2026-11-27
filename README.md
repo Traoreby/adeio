@@ -33,7 +33,7 @@ Sans les variables Supabase, les pages publiques restent consultables et affiche
 | `CONTACT_PHONE` | Facultative | Téléphone officiel affiché dans la page Contact |
 | `CONTACT_WHATSAPP` | Facultative | Numéro WhatsApp officiel affiché dans la page Contact |
 
-Les modèles d’e-mail Supabase doivent conserver `{{ .ConfirmationURL }}` pour que Supabase garde la maîtrise des liens de confirmation. L’application fournit ensuite une URL `redirectTo` explicite pour le callback. En production, cette URL est construite à partir de `NEXT_PUBLIC_SITE_URL`; en développement seulement, l’application peut utiliser l’hôte local.
+Les modèles locaux Supabase pour l’invitation, la confirmation et la récupération sont versionnés dans `supabase/templates/` et référencés par `supabase/config.toml`. Ils construisent un lien vers `/auth/verify` à partir de `{{ .RedirectTo }}` et `{{ .TokenHash }}`. La page affiche une confirmation explicite avant l’échange `verifyOtp`, afin qu’un scanner de messagerie qui ne fait qu’un GET ne consomme pas le lien. Le callback PKCE existant reste disponible pour les anciens liens. Les modèles des projets hébergés doivent être mis à jour dans **Authentication → Email Templates** ; un push Git ou une migration SQL ne les modifie pas. En production, les `redirectTo` sont construits sur `https://adeio.vercel.app`; en développement ils utilisent le site local configuré.
 
 ## Initialiser le premier super-administrateur
 

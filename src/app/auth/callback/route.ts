@@ -38,6 +38,23 @@ export async function GET(request: NextRequest) {
   const authError = requestUrl.searchParams.get("error");
   const authErrorCode = requestUrl.searchParams.get("error_code");
 
+  // Older/custom Supabase templates may still point token_hash links at this
+  // callback. Move them to the explicit-confirmation page without consuming the
+  // one-time token during a mail scanner's GET request.
+  const tokenHash = requestUrl.searchParams.get("token_hash");
+  const tokenType = requestUrl.searchParams.get("type");
+  if (!code && tokenHash && tokenType) {
+    const verifyUrl = new URL("/auth/verify", redirectOrigin);
+    for (const key of ["token_hash", "type", "flow", "next"]) {
+      const value = requestUrl.searchParams.get(key);
+      if (value) verifyUrl.searchParams.set(key, value);
+    }
+    const response = NextResponse.redirect(verifyUrl);
+    response.headers.set("Cache-Control", "no-store, max-age=0");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    return response;
+  }
+
   if (authError || authErrorCode) {
     const error = authErrorCode === "otp_expired" || authErrorCode === "flow_state_expired"
       ? "lien-expire"
@@ -95,8 +112,12 @@ export async function GET(request: NextRequest) {
   // Activation, reactivation and recovery links must all pass through the
   // password form after their one-time code has been exchanged.
   const destinationUrl = new URL(passwordFlow ? "/mot-de-passe" : destination, redirectOrigin);
-  if (passwordFlow) destinationUrl.searchParams.set("flow", passwordFlow);
+  if (passwordFlow) {
+    destinationUrl.searchParams.set("flow", passwordFlow);
+    destinationUrl.searchParams.set("next", destination);
+  }
   const response = NextResponse.redirect(destinationUrl);
   response.headers.set("Cache-Control", "no-store, max-age=0");
+  response.headers.set("Referrer-Policy", "no-referrer");
   return response;
 }

@@ -155,7 +155,7 @@ export async function createIntegratedMemberAction(_previous: CreateMemberState,
     const siteUrl = await getSiteBaseUrl();
     if (!siteUrl) return { error: "Configurez NEXT_PUBLIC_SITE_URL avant l’envoi des invitations." };
     const { data, error } = await service.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `${siteUrl}/auth/callback?flow=invitation&next=/mot-de-passe`,
+      redirectTo: `${siteUrl}/auth/verify?flow=invitation&next=/mot-de-passe`,
       data: { display_name: `${parsed.data.firstName} ${parsed.data.lastName}` },
     });
     if (error || !data.user) {
@@ -189,7 +189,7 @@ export async function createIntegratedMemberAction(_previous: CreateMemberState,
 
   if (existing) {
     const siteUrl = await getSiteBaseUrl();
-    const callback = siteUrl ? `${siteUrl}/auth/callback?flow=${existing.email_confirmed_at ? "recovery" : "signup"}&next=/mot-de-passe` : null;
+    const callback = siteUrl ? `${siteUrl}/auth/verify?flow=${existing.email_confirmed_at ? "recovery" : "signup"}&next=/mot-de-passe` : null;
     let emailError = !callback;
     if (callback && !existing.email_confirmed_at && existing.email) {
       const { error } = await supabase.auth.resend({ type: "signup", email: existing.email, options: { emailRedirectTo: callback } });

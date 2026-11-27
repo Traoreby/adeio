@@ -13,8 +13,8 @@ const RECOVERY_COOKIE = "adeio-password-recovery";
 const PASSWORD_FLOW_COOKIE = "adeio-password-flow";
 const PASSWORD_API_PATH = "/api/account/password";
 
-function errorResponse(error: string, status: number) {
-  return NextResponse.json({ error }, { status, headers: { "Cache-Control": "no-store" } });
+function errorResponse(error: string, status: number, allowRecoveryResend = false) {
+  return NextResponse.json({ error, allowRecoveryResend }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: NextRequest) {
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   if (!supabase) return errorResponse("Service non configuré.", 503);
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError) return errorResponse("La session n’a pas pu être vérifiée. Réessayez ou demandez un nouveau lien de récupération.", 503);
-  if (!user) return errorResponse("La session de récupération est absente ou expirée. Demandez un nouveau lien.", 401);
+  if (!user) return errorResponse("La session de vérification est absente ou expirée. Ouvrez un nouveau lien de récupération.", 401, true);
 
   const cookieStore = await cookies();
   const isRecoverySession = cookieStore.get(RECOVERY_COOKIE)?.value === "1";
@@ -44,26 +44,36 @@ export async function POST(request: NextRequest) {
   ]);
   if (roleResult.error || !roleResult.data?.length) return errorResponse("Le rôle de ce compte n’a pas pu être vérifié. Contactez l’administration.", 503);
   if (profileResult.error || !profileResult.data) return errorResponse("Le profil de ce compte n’a pas pu être vérifié. Contactez l’administration.", 503);
-  const isFirstPasswordFlow = (passwordFlow === "invitation" || passwordFlow === "signup") && profileResult.data.must_change_password;
-  const isReactivationFlow = passwordFlow === "reactivation" && profileResult.data.must_change_password;
-  if (!isRecoverySession && !isFirstPasswordFlow && !isReactivationFlow && !profileResult.data.must_change_password) {
-    return errorResponse("Cette session ne provient pas d’une récupération de mot de passe. Connectez-vous et demandez un nouveau lien si nécessaire.", 403);
-  }
+  const roles = roleResult.data.map((row) => row.role);
   const serviceClient = createSupabaseServiceClient();
   if (!serviceClient) return errorResponse("La finalisation sécurisée du compte est momentanément indisponible.", 503);
 
-  const roles = roleResult.data.map((row) => row.role);
-  const isAdmin = roles.includes("admin") || roles.includes("super_admin");
-  const fallback = isAdmin ? "/admin" : "/espace-membre";
-  let postActivationFallback = fallback;
-  if (isFirstPasswordFlow && roles.includes("member")) {
+  let onboardingKind: string | null = null;
+  let onboardingStatus: string | null = null;
+  if (roles.includes("member") && profileResult.data.must_change_password) {
     const { data: onboarding, error: onboardingError } = await serviceClient
       .from("member_onboarding")
       .select("kind,status")
       .eq("user_id", user.id)
       .maybeSingle();
     if (onboardingError) return errorResponse("L’état de l’adhésion n’a pas pu être vérifié. Contactez l’administration.", 503);
-    if (onboarding?.kind === "new_member" && onboarding.status === "pending") {
+    onboardingKind = onboarding?.kind ?? null;
+    onboardingStatus = onboarding?.status ?? null;
+  }
+
+  const pendingNewMember = isRecoverySession && onboardingKind === "new_member" && onboardingStatus === "pending";
+  const pendingReactivation = isRecoverySession && onboardingKind === "reactivation" && onboardingStatus !== "completed";
+  const isFirstPasswordFlow = ((passwordFlow === "invitation" || passwordFlow === "signup") || pendingNewMember) && profileResult.data.must_change_password;
+  const isReactivationFlow = (passwordFlow === "reactivation" || pendingReactivation) && profileResult.data.must_change_password;
+  if (!isRecoverySession && !isFirstPasswordFlow && !isReactivationFlow && !profileResult.data.must_change_password) {
+    return errorResponse("Cette session ne provient pas d’une récupération de mot de passe. Connectez-vous et demandez un nouveau lien si nécessaire.", 403);
+  }
+
+  const isAdmin = roles.includes("admin") || roles.includes("super_admin");
+  const fallback = isAdmin ? "/admin" : "/espace-membre";
+  let postActivationFallback = fallback;
+  if (isFirstPasswordFlow && roles.includes("member")) {
+    if (onboardingKind === "new_member" && onboardingStatus === "pending") {
       postActivationFallback = "/espace-membre/profil";
     }
   }

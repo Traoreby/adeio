@@ -30,7 +30,7 @@ export function AuthForm() {
     "lien-invalide": "Ce lien de connexion ou de récupération n’est pas valide. Demandez un nouveau lien.",
     "lien-expire": "Ce lien a expiré ou a déjà été utilisé. Demandez-en un nouveau.",
     "verificateur-manquant": "Le lien a été ouvert dans un autre navigateur ou appareil. Demandez un nouveau lien et ouvrez-le dans le même navigateur.",
-    "code-manquant": "Le lien de récupération est incomplet. Demandez-en un nouveau.",
+    "code-manquant": "Le lien reçu n’a pas transmis la preuve de vérification attendue. Ne demandez pas encore un autre e-mail ; contactez l’administration pour vérifier le modèle d’authentification Supabase.",
     "echange-impossible": "Supabase n’a pas pu établir la session à partir de ce lien. Demandez-en un nouveau et réessayez une seule fois.",
     "session-absente": "La session de récupération n’a pas été établie. Demandez un nouveau lien.",
     "verification-indisponible": "La session a été créée, mais sa vérification est momentanément indisponible. Réessayez sans demander un autre lien.",
@@ -49,7 +49,7 @@ export function AuthForm() {
     setMessage(""); setFatalError("");
     const result = await requestPasswordResetAction(values);
     if (result.error) return setFatalError(result.error);
-    setMessage("Si un compte correspond à cette adresse, un e-mail de récupération vient d’être envoyé. Ouvrez la page ADEIO indiquée et saisissez le code à 6 chiffres du message.");
+    setMessage("Si un compte correspond à cette adresse, un e-mail de récupération vient d’être envoyé. Ouvrez son lien, confirmez la vérification sur ADEIO, puis choisissez votre nouveau mot de passe.");
   }
 
   return <div className="auth-card">

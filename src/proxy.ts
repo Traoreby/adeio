@@ -2,9 +2,13 @@ import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
-  // The callback must exchange its one-time PKCE code only in its route handler.
-  if (request.nextUrl.pathname === "/auth/callback") {
-    return NextResponse.next({ request });
+  // Auth callbacks and token confirmation pages must not run session refreshes
+  // before their one-time credentials are exchanged by their own handler/action.
+  if (request.nextUrl.pathname === "/auth/callback" || request.nextUrl.pathname === "/auth/verify") {
+    const response = NextResponse.next({ request });
+    response.headers.set("Cache-Control", "no-store, max-age=0");
+    response.headers.set("Referrer-Policy", "no-referrer");
+    return response;
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

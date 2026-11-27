@@ -27,7 +27,7 @@ export async function requestPasswordResetAction(input: unknown): Promise<LoginA
   const siteUrl = await getSiteBaseUrl();
   if (!siteUrl) return { error: "Le lien de récupération est momentanément indisponible." };
 
-  const callbackUrl = new URL("/auth/callback", siteUrl);
+  const callbackUrl = new URL("/auth/verify", siteUrl);
   callbackUrl.searchParams.set("next", "/mot-de-passe");
   callbackUrl.searchParams.set("flow", "recovery");
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
