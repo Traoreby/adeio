@@ -20,7 +20,12 @@ export async function GET(request: NextRequest) {
 
   const serviceClient = createSupabaseServiceClient();
   if (!serviceClient) return NextResponse.json({ error: "Connexion serveur Supabase indisponible." }, { status: 503 });
-  const { data, error } = await serviceClient.rpc("archive_expired_members");
-  if (error) return NextResponse.json({ error: "L’archivage quotidien a échoué." }, { status: 500 });
-  return NextResponse.json({ archived: data ?? 0 }, { headers: { "cache-control": "no-store" } });
+  const [{ data: archived, error: archiveError }, { data: termsUpdated, error: termError }] = await Promise.all([
+    serviceClient.rpc("archive_expired_members"),
+    serviceClient.rpc("expire_executive_terms"),
+  ]);
+  if (archiveError || termError) {
+    return NextResponse.json({ error: "La synchronisation quotidienne des cycles ou des mandats a échoué." }, { status: 500 });
+  }
+  return NextResponse.json({ archived: archived ?? 0, executiveTermsUpdated: termsUpdated ?? 0 }, { headers: { "cache-control": "no-store" } });
 }

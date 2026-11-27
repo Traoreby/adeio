@@ -7,6 +7,7 @@ import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
 import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { issueMemberToken } from "@/lib/member-qr-crypto";
 import { getSiteBaseUrl } from "@/lib/site-url";
+import { getExecutiveTermEnd, getExecutiveTermStatus, getExecutiveTermTitle, getIndiaDateString } from "@/lib/executive-terms";
 
 const announcementSchema = z.object({
   title: z.string().trim().min(3, "Le titre doit contenir au moins 3 caractères.").max(140),
@@ -90,35 +91,6 @@ export async function setFinancialReceiptThresholdAction(formData: FormData) {
   revalidatePath("/admin/parametres");
   revalidatePath("/gestion-financiere/operations/nouvelle");
   redirect("/admin/parametres?statut=seuil-justificatif-enregistre");
-}
-
-export async function enableMemberLifecycleAction() {
-  const { supabase, user, roles } = await getSignedInUser();
-  if (!supabase || !user) redirect("/connexion?next=%2Fadmin%2Fparametres");
-  if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
-  if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Fparametres");
-  const { error } = await supabase.rpc("enable_member_lifecycle");
-  if (error) redirect(`/admin/parametres?erreur=${encodeURIComponent(error.code === "23514" ? "annees-sortie-a-corriger" : "activation-archivage-impossible")}`);
-  revalidatePath("/admin/parametres");
-  revalidatePath("/admin/membres");
-  revalidatePath("/admin/archives");
-  revalidatePath("/membres");
-  revalidatePath("/archives");
-  redirect("/admin/parametres?statut=archivage-automatique-active");
-}
-
-export async function pauseMemberLifecycleAction() {
-  const { supabase, user, roles } = await getSignedInUser();
-  if (!supabase || !user) redirect("/connexion?next=%2Fadmin%2Fparametres");
-  if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
-  if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Fparametres");
-  const { error } = await supabase.from("settings").upsert({
-    key: "member_lifecycle_enforced", value: { enabled: false }, updated_by: user.id,
-  });
-  if (error) redirect("/admin/parametres?erreur=activation-archivage-impossible");
-  revalidatePath("/admin/parametres");
-  revalidatePath("/membres");
-  redirect("/admin/parametres?statut=archivage-automatique-pause");
 }
 
 async function sendExistingMemberAccessEmail(supabase: NonNullable<Awaited<ReturnType<typeof import("@/lib/supabase/server").createSupabaseServerClient>>>, userId: string, flow: "invitation" | "reactivation" = "invitation") {
@@ -336,28 +308,25 @@ export async function setAnnouncementPinnedAction(formData: FormData) {
   redirect("/admin/annonces?statut=annonce-modifiee");
 }
 
-const termSchema = z.object({
-  title: z.string().trim().min(3).max(120),
-  startsOn: z.string().date(),
-  endsOn: z.string().date().optional().or(z.literal("")),
-});
+const termSchema = z.object({ startsOn: z.string().date() });
 
 export async function startExecutiveTermAction(formData: FormData) {
   const { supabase, user, roles } = await getSignedInUser();
   if (!supabase || !user) redirect("/connexion?next=/admin/bureau");
-  if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Fbureau");
   const parsed = termSchema.safeParse({
-    title: toStringValue(formData, "title"),
     startsOn: toStringValue(formData, "starts_on"),
-    endsOn: toStringValue(formData, "ends_on"),
   });
   if (!parsed.success) redirect("/admin/bureau?erreur=formulaire-invalide");
+  const endsOn = getExecutiveTermEnd(parsed.data.startsOn);
+  if (!endsOn) redirect("/admin/bureau?erreur=formulaire-invalide");
   const { data, error } = await supabase.rpc("start_executive_term", {
-    p_term_title: parsed.data.title,
+    p_term_title: getExecutiveTermTitle(parsed.data.startsOn, endsOn),
     p_starts_on: parsed.data.startsOn,
-    p_ends_on: parsed.data.endsOn || null,
+    p_ends_on: endsOn,
   });
-  if (error) redirect("/admin/bureau?erreur=creation-impossible");
+  if (error) redirect(`/admin/bureau?erreur=${encodeURIComponent(error.code === "23P01" ? "chevauchement-mandats" : "creation-impossible")}`);
   revalidatePath("/bureau"); revalidatePath("/admin/bureau");
   redirect(`/admin/bureau?statut=mandat-cree&term=${encodeURIComponent(String(data))}`);
 }
@@ -373,6 +342,16 @@ export async function assignExecutiveMemberAction(formData: FormData) {
   });
   if (!ids.success) redirect("/admin/bureau?erreur=formulaire-invalide");
   const { memberId, positionId, termId } = ids.data;
+    const today = getIndiaDateString();
+    const [{ data: term }, { data: member }, { data: position }] = await Promise.all([
+      supabase.from("executive_terms").select("starts_on,ends_on").eq("id", termId).maybeSingle(),
+      supabase.from("members").select("status,exit_year").eq("id", memberId).maybeSingle(),
+      supabase.from("executive_positions").select("is_active").eq("id", positionId).maybeSingle(),
+    ]);
+    const termStatus = term ? getExecutiveTermStatus(term.starts_on, term.ends_on, today) : "ended";
+    if (termStatus === "ended" || member?.status !== "active" || !member.exit_year || member.exit_year < Number(today.slice(0, 4)) || !position?.is_active) {
+      redirect("/admin/bureau?erreur=affectation-impossible");
+    }
   const { error } = await supabase.from("executive_members").insert({ term_id: termId, member_id: memberId, position_id: positionId });
   if (error) redirect(`/admin/bureau?erreur=${encodeURIComponent(error.code === "23505" ? "fonction-deja-attribuee" : "affectation-impossible")}`);
   revalidatePath("/bureau"); revalidatePath("/admin/bureau");
@@ -385,6 +364,11 @@ export async function removeExecutiveMemberAction(formData: FormData) {
   if (!roles.some((role) => role === "admin" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
   const id = toStringValue(formData, "id");
   if (!idSchema.safeParse(id).success) redirect("/admin/bureau?erreur=suppression-impossible");
+  const { data: assignment } = await supabase.from("executive_members").select("executive_terms!inner(starts_on,ends_on)").eq("id", id).maybeSingle();
+  const assignmentTerm = Array.isArray(assignment?.executive_terms) ? assignment.executive_terms[0] : assignment?.executive_terms;
+  if (!assignmentTerm || getExecutiveTermStatus(assignmentTerm.starts_on, assignmentTerm.ends_on, getIndiaDateString()) === "ended") {
+    redirect("/admin/bureau?erreur=historique-protege");
+  }
   const { error } = await supabase.from("executive_members").delete().eq("id", id);
   if (error) redirect("/admin/bureau?erreur=suppression-impossible");
   revalidatePath("/bureau"); revalidatePath("/admin/bureau");

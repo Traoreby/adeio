@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, CalendarDays, Newspaper, UsersRound } from "lucide-react";
 import { getSignedInUser } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
+import { getExecutiveTermStatus, getIndiaDateString } from "@/lib/executive-terms";
 import { deleteStorageOrphanAction } from "@/app/admin/storage-actions";
 
 type Props = { searchParams: Promise<{ stockage?: string }> };
@@ -11,11 +12,13 @@ type StorageOrphan = { bucket_id: "member-photos" | "financial-attachments" | "f
 export default async function AdminDashboardPage({ searchParams }: Props) {
   const [{ supabase, roles }, params] = await Promise.all([getSignedInUser(), searchParams]);
   if (!supabase) return null;
-  const [{ count: memberCount }, { data: announcements }, { data: term }] = await Promise.all([
+  const [{ count: memberCount }, { data: announcements }, { data: terms }] = await Promise.all([
     supabase.from("members").select("id", { count: "exact", head: true }).eq("status", "active"),
     supabase.from("announcements").select("id,title,is_published,created_at").order("created_at", { ascending: false }).limit(4),
-    supabase.from("executive_terms").select("title,starts_on").eq("is_current", true).maybeSingle(),
+    supabase.from("executive_terms").select("title,starts_on,ends_on").order("starts_on", { ascending: false }),
   ]);
+  const today = getIndiaDateString();
+  const term = terms?.find((item) => getExecutiveTermStatus(item.starts_on, item.ends_on, today) === "current") ?? null;
   let storageUsage: StorageUsage[] = [];
   let storageOrphans: StorageOrphan[] = [];
   let storageAvailable = false;

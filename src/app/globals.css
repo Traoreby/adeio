@@ -999,6 +999,15 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .user-admin-identity strong, .user-admin-identity small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-list-row > div { min-width: 0; }
 .admin-list-row p { overflow-wrap: anywhere; }
+.executive-term-history { align-items: flex-start; }
+.executive-history-roster { display: grid; gap: 7px; margin: 14px 0 0; padding: 0; list-style: none; }
+.executive-history-roster li { display: flex; flex-wrap: wrap; gap: 4px 12px; color: #34453a; font-size: 14px; }
+.executive-history-roster li strong { color: #18251d; }
+.executive-term-history > .status-chip { flex: 0 0 auto; }
+@media (max-width: 640px) {
+  .executive-term-history { gap: 8px; }
+  .executive-term-history > .status-chip { align-self: flex-start; }
+}
 .desktop-nav { min-width: 0; }
 .desktop-nav > a:not(.inline-flex) { flex: 0 0 auto; white-space: nowrap; }
 .header-inner { gap: 14px; }

@@ -710,6 +710,9 @@ begin
         and ci.review_approved_at = review_row.approved_at
         and ci.signature_asset_id = signature_row.id and ci.seal_asset_id = seal_row.id;
     if found then issuance_id := issued_id; return next; continue; end if;
+    if exists (select 1 from public.member_card_issuances ci where ci.qr_token_id = qr_row.id) then
+      raise exception 'Ce QR est déjà lié à une ancienne délivrance. Réémettez explicitement le QR avant de délivrer une nouvelle carte.' using errcode = '23514';
+    end if;
     snapshot := jsonb_build_object(
       'first_name', member_row.first_name, 'last_name', member_row.last_name, 'member_number', member_row.member_number,
       'joined_year', member_row.joined_year, 'study_program', education_row.study_program, 'institution', education_row.institution,
