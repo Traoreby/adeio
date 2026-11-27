@@ -219,7 +219,7 @@ export async function updateMemberAction(formData: FormData) {
   const { data: existing } = await supabase.from("members").select("status,joined_year,user_id").eq("id", id).maybeSingle();
   if (!existing) redirect("/admin/membres?erreur=membre-introuvable");
   if (existing.status !== "active" && input.status === "active") redirect(`${nextPath}?erreur=utiliser-reactivation`);
-  if (input.status === "active" && input.exitYear <= Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()))) redirect(`${nextPath}?erreur=annee-sortie-invalide`);
+  if (input.status === "active" && input.exitYear < Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()))) redirect(`${nextPath}?erreur=annee-sortie-invalide`);
   if (input.joinedYear !== existing.joined_year) redirect(`${nextPath}?erreur=annee-initiale-immuable`);
   if (existing.user_id && input.userId !== existing.user_id) redirect(`${nextPath}?erreur=compte-lie-immuable`);
   if (!existing.user_id && input.userId) {

@@ -34,7 +34,10 @@ export async function reviewMemberCardAction(formData: FormData) {
     joinedYear: field(formData, "joined_year"),
     exitYear: field(formData, "exit_year"),
   });
-  if (!parsed.success || parsed.data.exitYear < parsed.data.joinedYear) redirect(`${path}?erreur=validation-carte-invalide`);
+  const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
+  if (!parsed.success || parsed.data.joinedYear > currentYear || parsed.data.exitYear < parsed.data.joinedYear || parsed.data.exitYear < currentYear) {
+    redirect(`${path}?erreur=validation-carte-invalide`);
+  }
   const { error } = await supabase.rpc("review_member_card", {
     p_member_id: memberId.data,
     p_decision: "approved",
@@ -42,7 +45,16 @@ export async function reviewMemberCardAction(formData: FormData) {
     p_exit_year: parsed.data.exitYear,
     p_comment: null,
   });
-  if (error) redirect(`${path}?erreur=${encodeURIComponent(error.code === "42501" ? "acces-refuse" : "validation-carte-impossible")}`);
+  if (error) {
+    const errorKey = error.code === "42501"
+      ? "acces-refuse"
+      : error.code === "23514"
+        ? "validation-carte-invalide"
+        : error.code === "P0002"
+          ? "membre-introuvable"
+          : "validation-carte-impossible";
+    redirect(`${path}?erreur=${errorKey}`);
+  }
   revalidatePath(path);
   revalidatePath("/admin/qr-codes");
   redirect(`${path}?statut=carte-informations-validees`);

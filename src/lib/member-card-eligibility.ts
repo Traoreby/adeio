@@ -8,7 +8,6 @@ type MemberCardEligibilityInput = {
   reviewApproved: boolean;
   hasCurrentPeriod: boolean;
   periodEnd: string | null;
-  periodEndConfirmed: boolean;
   hasCurrentEducation: boolean;
   hasPrintableQr: boolean;
   hasSignature: boolean;
@@ -19,12 +18,13 @@ export function getMemberCardBlockers(input: MemberCardEligibilityInput, today: 
   const reasons: string[] = [];
   if (input.status !== "active") reasons.push("Membre non actif");
   if (input.reactivationPhotoRequired) reasons.push("Nouvelle photo après réactivation requise");
-  if (input.joinedYear === null || input.exitYear === null || input.exitYear <= currentYear) reasons.push("Année de sortie absente ou non future");
+  if (input.joinedYear === null || input.exitYear === null || input.exitYear < currentYear) reasons.push("Année de fin de cycle absente ou dépassée");
   if (!input.profileCompletedAt) reasons.push("Profil incomplet");
   if (!input.photoPath) reasons.push("Photo manquante");
   if (!input.reviewApproved) reasons.push("Validation Super Admin manquante");
   if (!input.hasCurrentPeriod) reasons.push("Période d’adhésion actuelle manquante");
-  else if (!input.periodEndConfirmed || !input.periodEnd) reasons.push("Date réelle de fin non confirmée");
+  else if (!input.periodEnd) reasons.push("Période d’adhésion à actualiser lors de la validation");
+  else if (input.periodEnd !== `${input.exitYear}-12-31`) reasons.push("Période d’adhésion incohérente avec l’année de fin de cycle");
   else if (input.periodEnd < today) reasons.push("Période expirée");
   if (!input.hasCurrentEducation) reasons.push("Formation actuelle manquante");
   if (!input.hasPrintableQr) reasons.push("QR actif manquant");
@@ -41,6 +41,6 @@ export function canIssueMemberQr(input: {
   return input.status === "active"
     && !input.reactivationPhotoRequired
     && input.exitYear !== null
-    && input.exitYear > currentYear
+    && input.exitYear >= currentYear
     && !input.hasActiveQr;
 }

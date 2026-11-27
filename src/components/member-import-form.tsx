@@ -59,8 +59,9 @@ function toMemberRows(data: unknown[][]): MemberRow[] {
 function validationMessage(row: MemberRow) {
   if (!row.firstName || !row.lastName) return "Nom et prénoms obligatoires.";
   if (!Number.isInteger(Number(row.joinedYear)) || Number(row.joinedYear) < 1900 || Number(row.joinedYear) > 2200) return "Année d’entrée invalide.";
-  if (!Number.isInteger(Number(row.exitYear)) || Number(row.exitYear) < Number(row.joinedYear)) return "Année de sortie obligatoire et invalide.";
-  if (row.status === "active" && Number(row.exitYear) <= new Date().getFullYear()) return "L’année de sortie d’un membre actif doit être future.";
+  if (!Number.isInteger(Number(row.exitYear)) || Number(row.exitYear) < Number(row.joinedYear)) return "Année de fin de cycle obligatoire et invalide.";
+  const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
+  if (row.status === "active" && Number(row.exitYear) < currentYear) return "L’année de fin de cycle d’un membre actif ne peut pas être dépassée.";
   if (!row.studyProgram || !row.institution || row.studyProgram.length < 2 || row.institution.length < 2) return "Filière et établissement obligatoires.";
   if (!/^\+?[0-9() .-]{6,40}$/.test(row.phone)) return "Téléphone obligatoire et invalide.";
   if (!["female", "male"].includes(row.sex)) return "Sexe obligatoire : female ou male.";

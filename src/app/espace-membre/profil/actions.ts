@@ -52,7 +52,7 @@ export async function saveOwnMemberProfileAction(_previous: MemberProfileActionR
   if (!parsed.success) return { error: "Complétez tous les champs obligatoires avec des valeurs valides." };
   const input = parsed.data;
   const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
-  if (input.exitYear <= currentYear || input.exitYear < input.joinedYear) return { error: "L’année de fin de cycle doit être postérieure à l’année en cours et ne peut pas précéder l’adhésion." };
+  if (input.exitYear < currentYear || input.exitYear < input.joinedYear) return { error: "L’année de fin de cycle ne peut pas être antérieure à l’année en cours ni à l’année d’adhésion." };
 
   const photo = await validPhoto(formData.get("photo"));
   if (photo === false) return { error: "La photo doit être une image WebP ou JPEG compressée de 500 Ko maximum." };

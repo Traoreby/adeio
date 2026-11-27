@@ -9,7 +9,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { canIssueMemberQr, getMemberCardBlockers } from "@/lib/member-card-eligibility";
 
 export const metadata: Metadata = { title: "QR Codes et cartes · Administration" };
-type MembershipPeriodCandidate = { id: string; member_id: string; starts_on: string; ends_on: string | null; ends_on_source: string; ends_on_confirmed_at: string | null; ends_on_confirmed_by: string | null; created_at: string };
+type MembershipPeriodCandidate = { id: string; member_id: string; starts_on: string; ends_on: string | null; created_at: string };
 
 export default async function AdminQrCodesPage() {
   const { supabase, roles } = await getSignedInUser();
@@ -20,7 +20,7 @@ export default async function AdminQrCodesPage() {
     supabase.from("members").select("id,member_number,first_name,last_name,status,joined_year,exit_year,reactivation_photo_required,photo_path,profile_completed_at").order("last_name").limit(100),
     Promise.resolve(createSupabaseServiceClient()),
     isSuperAdmin ? supabase.from("member_card_reviews").select("member_id,review_status,approved_at") : Promise.resolve({ data: [] }),
-    isSuperAdmin ? supabase.from("membership_periods").select("id,member_id,starts_on,ends_on,ends_on_source,ends_on_confirmed_at,ends_on_confirmed_by,created_at").order("starts_on", { ascending: false }).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
+    isSuperAdmin ? supabase.from("membership_periods").select("id,member_id,starts_on,ends_on,created_at").order("starts_on", { ascending: false }).order("created_at", { ascending: false }) : Promise.resolve({ data: [] }),
     isSuperAdmin ? supabase.from("member_card_official_assets").select("asset_kind").eq("is_current", true) : Promise.resolve({ data: [] }),
     isSuperAdmin ? supabase.from("member_education_periods").select("member_id").eq("is_current", true) : Promise.resolve({ data: [] }),
   ]);
@@ -53,7 +53,6 @@ export default async function AdminQrCodesPage() {
       reviewApproved: review?.review_status === "approved" && Boolean(review.approved_at),
       hasCurrentPeriod: Boolean(period),
       periodEnd: period?.ends_on ?? null,
-      periodEndConfirmed: period?.ends_on_source === "admin_confirmed" && Boolean(period.ends_on_confirmed_at) && Boolean(period.ends_on_confirmed_by),
       hasCurrentEducation: currentEducation.has(member.id),
       hasPrintableQr: printableQrSet.has(member.id),
       hasSignature: assetKinds.has("signature"),

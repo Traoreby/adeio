@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     .in("id", parsed.data.memberIds);
   if (error || !members || members.length !== parsed.data.memberIds.length) return NextResponse.json({ error: "Un ou plusieurs membres sont introuvables." }, { status: 404 });
   const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
-  if (members.some((member) => member.status !== "active" || member.reactivation_photo_required || member.exit_year === null || member.exit_year <= currentYear)) {
+  if (members.some((member) => member.status !== "active" || member.reactivation_photo_required || member.exit_year === null || member.exit_year < currentYear)) {
     return NextResponse.json({ error: "La sélection contient un membre inactif ou dont le profil doit être actualisé." }, { status: 409 });
   }
 

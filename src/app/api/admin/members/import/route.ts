@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
   for (let index = 0; index < body.rows.length; index += 1) {
     const parsed = importRowSchema.safeParse(body.rows[index]);
     const rowNumber = index + 2;
-    if (!parsed.success || parsed.data.exitYear < parsed.data.joinedYear || (parsed.data.status === "active" && parsed.data.exitYear <= currentYear)) {
-      report.push({ row: rowNumber, ok: false, message: parsed.success ? "Vérifiez l’année de sortie ; elle doit être future pour un membre actif." : parsed.error.issues[0]?.message ?? "Ligne invalide." });
+    if (!parsed.success || parsed.data.exitYear < parsed.data.joinedYear || (parsed.data.status === "active" && parsed.data.exitYear < currentYear)) {
+      report.push({ row: rowNumber, ok: false, message: parsed.success ? "Vérifiez l’année de fin de cycle ; elle ne peut pas être dépassée pour un membre actif." : parsed.error.issues[0]?.message ?? "Ligne invalide." });
       continue;
     }
     const item = parsed.data;
