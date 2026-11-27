@@ -13,8 +13,8 @@ export const metadata: Metadata = { title: "Mon profil · ADEIO" };
 
 const feedback: Record<string, string> = {
   "profil-invalide": "Complétez tous les champs obligatoires avec des valeurs valides.",
-  "annee-sortie-invalide": "L’année de sortie doit être postérieure à l’année en cours et ne peut pas précéder l’adhésion.",
-  "annee-sortie-atteinte": "Votre année de sortie est atteinte. Seule l’administration peut décider d’une réactivation.",
+  "annee-sortie-invalide": "L’année de fin de cycle doit être postérieure à l’année en cours et ne peut pas précéder l’adhésion.",
+  "annee-sortie-atteinte": "Votre année de fin de cycle est atteinte. Seule l’administration peut décider d’une réactivation.",
   "annees-validees-verrouillees": "Vos années ont été validées et ne peuvent plus être modifiées. Contactez le Super Admin pour demander une correction.",
   "photo-invalide": "La photo doit être une image WebP ou JPEG compressée de 500 Ko maximum.",
   "photo-impossible": "La photo n’a pas pu être enregistrée. Réessayez.",
@@ -59,13 +59,13 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
   const expiredAwaitingArchive = member?.status === "active" && !isNewOnboarding && isCurrentMember === false;
   const canEdit = (member?.status === "active" && !expiredAwaitingArchive) || isNewOnboarding || isReactivation;
   const currentEducation = educationRows?.find((item) => item.is_current);
-  const status = isNewOnboarding ? "En attente de complétion" : expiredAwaitingArchive ? "Année de sortie atteinte · archivage en cours" : member ? memberStatusLabels[member.status as MemberStatus] : "En attente de complétion";
+  const status = isNewOnboarding ? "En attente de complétion" : expiredAwaitingArchive ? "Année de fin de cycle atteinte · archivage en cours" : member ? memberStatusLabels[member.status as MemberStatus] : "En attente de complétion";
 
   return <section className="member-space-page section-pad"><div className="container member-profile-container">
     <div className="member-space-heading"><div><div className="eyebrow eyebrow-green">ESPACE PERSONNEL</div><h1>Mon profil</h1><p>Complétez vos informations personnelles et vérifiez votre fiche ADEIO.</p></div><Link href="/espace-membre" className="text-link"><ArrowLeft size={15} /> Mon espace</Link></div>
     {params.erreur && <div role="alert" className="form-alert error-alert admin-banner">{feedback[params.erreur] ?? "Une erreur est survenue. Réessayez ou contactez l’administration."}</div>}
     {params.statut && <div role="status" className="form-alert success-alert admin-banner">{params.statut === "reactivation-soumise" ? "Votre profil et votre nouvelle photo ont été transmis à l’administration pour validation." : "Votre profil a été enregistré."}</div>}
-    {expiredAwaitingArchive && <div role="status" className="admin-banner">Votre année de sortie est atteinte. Les accès réservés aux membres actifs sont fermés ; le dossier passera dans les archives au prochain traitement. Une réactivation exige une décision de l’administration.</div>}
+    {expiredAwaitingArchive && <div role="status" className="admin-banner">Votre année de fin de cycle est atteinte. Les accès réservés aux membres actifs sont fermés ; le dossier passera dans les archives au prochain traitement. Une réactivation exige une décision de l’administration.</div>}
 
     <article className="member-profile-card member-profile-self-card">
       {member && <div className="member-directory-avatar member-profile-avatar">{photoUrl ? <Image src={photoUrl} alt={`Photo de ${member.first_name} ${member.last_name}`} fill sizes="160px" unoptimized /> : <UserRound size={36} />}</div>}
@@ -73,7 +73,7 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
       <h2>{member ? `${member.first_name} ${member.last_name}` : profile?.display_name || "Nouvelle adhésion"}</h2>
       {member && <p className="member-profile-number">{member.member_number}</p>}
       <div className="member-profile-state"><span className={`status-chip ${member?.status === "active" ? "" : "draft"}`}>{status}</span>{member && <span>Adhésion initiale : {member.joined_year}</span>}</div>
-      <div className="member-profile-details"><div><span>E-mail du compte</span><strong>{user.email || "Non renseigné"}</strong></div><div><span>Statut</span><strong>{status}</strong></div>{member && <div><span>Année de sortie</span><strong>{member.exit_year ?? "À compléter"}</strong></div>}</div>
+      <div className="member-profile-details"><div><span>E-mail du compte</span><strong>{user.email || "Non renseigné"}</strong></div><div><span>Statut</span><strong>{status}</strong></div>{member && <div><span>Année de fin de cycle</span><strong>{member.exit_year ?? "À compléter"}</strong></div>}</div>
       <p className="member-profile-help"><LockKeyhole size={15} /> L’adresse e-mail et le statut sont gérés par l’administration. Pour changer l’e-mail du compte, contactez un Admin ou le Super Admin.</p>
     </article>
 

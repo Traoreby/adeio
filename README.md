@@ -35,6 +35,8 @@ Sans les variables Supabase, les pages publiques restent consultables et affiche
 
 Les modèles locaux Supabase pour l’invitation, la confirmation et la récupération sont versionnés dans `supabase/templates/` et référencés par `supabase/config.toml`. Ils construisent un lien vers `/auth/verify` à partir de `{{ .RedirectTo }}` et `{{ .TokenHash }}`. La page affiche une confirmation explicite avant l’échange `verifyOtp`, afin qu’un scanner de messagerie qui ne fait qu’un GET ne consomme pas le lien. Le callback PKCE existant reste disponible pour les anciens liens. Les modèles des projets hébergés doivent être mis à jour dans **Authentication → Email Templates** ; un push Git ou une migration SQL ne les modifie pas. En production, les `redirectTo` sont construits sur `https://adeio.vercel.app`; en développement ils utilisent le site local configuré.
 
+Les écrans d’activation et de changement/récupération de mot de passe imposent un minimum de 6 caractères côté interface et serveur. Pour aligner le projet hébergé, vérifiez également **Authentication → Sign In / Providers → Password** et définissez la longueur minimale à 6 ; cette politique de mot de passe du projet n’est pas versionnée par `supabase/config.toml`.
+
 ## Initialiser le premier super-administrateur
 
 1. Créer/inviter le premier compte depuis Supabase Auth. L’inscription publique n’existe pas.

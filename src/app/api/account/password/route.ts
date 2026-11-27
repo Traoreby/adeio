@@ -6,7 +6,7 @@ import { createSupabaseServiceClient } from "@/lib/supabase/service";
 import { safeRedirectPath } from "@/lib/redirect";
 
 const passwordSchema = z.object({
-  password: z.string().min(10, "Utilisez au moins 10 caractères.").max(128),
+  password: z.string().min(6, "Le mot de passe doit contenir au moins 6 caractères.").max(128),
   next: z.string().max(2048).optional(),
 });
 const RECOVERY_COOKIE = "adeio-password-recovery";
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
     const message = errorCode === "same_password"
       ? "Choisissez un mot de passe différent de celui que vous utilisez actuellement."
       : errorCode === "weak_password"
-        ? "Choisissez un mot de passe plus robuste, d’au moins 10 caractères."
+        ? "Le mot de passe ne respecte pas les exigences de Supabase Auth. Il doit contenir au moins 6 caractères."
         : "Le mot de passe n’a pas pu être modifié. Réessayez ou demandez un nouveau lien si votre session a expiré.";
     return errorResponse(message, 400);
   }
