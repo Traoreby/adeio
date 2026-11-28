@@ -1202,3 +1202,47 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 @media (prefers-reduced-motion: reduce) {
   .storage-meter > span { transition: none; }
 }
+
+/* Espace membre — cotisations alignées sur les échéances du Trésorier. */
+.member-contributions-page { display: grid; gap: 24px; min-width: 0; }
+.member-contribution-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 12px; }
+.member-contribution-summary-card { display: grid; gap: 10px; min-width: 0; padding: 17px; border: 1px solid #e1e9e3; border-radius: 15px; background: #fff; box-shadow: 0 8px 22px rgb(22 51 34 / 5%); }
+.member-contribution-summary-card span { display: flex; align-items: center; gap: 8px; color: #435148; font-size: 14px; font-weight: 650; }
+.member-contribution-summary-card span svg { color: #08734a; }
+.member-contribution-summary-card strong { color: #17231a; font-size: clamp(21px, 2vw, 27px); overflow-wrap: anywhere; }
+.member-contributions-section { display: grid; gap: 16px; min-width: 0; }
+.member-contributions-section-heading h2, .member-contribution-history h2 { display: flex; align-items: center; gap: 9px; margin: 5px 0; font-size: 21px; }
+.member-contributions-section-heading p { margin: 4px 0 0; color: #4b5850; font-size: 14px; line-height: 1.6; }
+.member-contribution-plan { min-width: 0; padding: 0; overflow: hidden; }
+.member-contribution-plan-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px clamp(16px, 2vw, 24px); border-bottom: 1px solid #e8ede9; }
+.member-contribution-plan-heading h3 { margin: 0; color: #17231a; font-size: 19px; line-height: 1.35; }
+.member-contribution-plan-heading p { margin: 6px 0 0; color: #4b5850; font-size: 14px; line-height: 1.5; }
+.member-contribution-plan-rate { flex: 0 0 auto; padding: 8px 11px; border-radius: 10px; background: #eef7f0; color: #075d3d; font-size: 14px; font-weight: 700; }
+.member-contribution-table { min-width: 900px; }
+.member-contribution-table td { vertical-align: top; white-space: normal; }
+.member-contribution-table td:first-child { min-width: 150px; }
+.member-contribution-table td:first-child strong, .member-contribution-table td:first-child small { display: block; }
+.member-contribution-table td:first-child small, .member-contribution-reason { margin-top: 5px; color: #4b5850; font-size: 13px; line-height: 1.45; }
+.member-contribution-status { display: inline-flex; align-items: center; min-height: 28px; padding: 5px 9px; border-radius: 99px; font-size: 13px; font-weight: 750; white-space: nowrap; }
+.member-contribution-status-paid { background: #e8f5ec; color: #075d3d; }
+.member-contribution-status-partial { background: #fff3e4; color: #8a4b00; }
+.member-contribution-status-unpaid { background: #fff0ef; color: #a12d25; }
+.member-contribution-status-not_concerned { background: #eef0ee; color: #505a53; }
+.member-contribution-allocation-details { min-width: 145px; }
+.member-contribution-allocation-details summary { color: #075d3d; font-size: 14px; font-weight: 650; cursor: pointer; }
+.member-contribution-allocation-details ul, .member-contribution-payment ul { display: grid; gap: 5px; margin: 8px 0 0; padding-left: 18px; color: #3d4a41; font-size: 13px; line-height: 1.5; }
+.member-contribution-muted { color: #657168; }
+.member-contribution-history { min-width: 0; }
+.member-contribution-history .admin-list { margin-top: 10px; }
+.member-contribution-payment { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.member-contribution-payment-main { min-width: 0; }
+.member-contribution-payment-main h3 { margin: 0; color: #17231a; font-size: 16px; }
+.member-contribution-payment-main p { margin: 4px 0; color: #3d4a41; font-size: 14px; overflow-wrap: anywhere; }
+.member-contribution-payment-main ul { margin-top: 6px; }
+.member-contribution-payment-main small { display: block; margin-top: 7px; color: #435148; font-size: 14px; }
+.member-contribution-payment > strong { flex: 0 0 auto; color: #075d3d; font-size: 18px; }
+@media (max-width: 760px) {
+  .member-contribution-plan-heading { align-items: flex-start; flex-direction: column; }
+  .member-contribution-plan-rate { white-space: normal; }
+  .member-contribution-payment { flex-direction: column; }
+}
