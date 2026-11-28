@@ -11,8 +11,8 @@ const profileSchema = z.object({
   lastName: z.string().trim().min(1).max(100),
   joinedYear: z.coerce.number().int().min(1900).max(2200),
   exitYear: z.coerce.number().int().min(1900).max(2200),
-  studyProgram: z.string().trim().min(2).max(160),
-  institution: z.string().trim().min(2).max(200),
+  studyProgramId: z.string().uuid(),
+  institutionId: z.string().uuid(),
   phone: z.string().trim().min(6).max(40),
   sex: z.enum(["female", "male"]).or(z.literal("")),
 });
@@ -44,8 +44,8 @@ export async function saveOwnMemberProfileAction(_previous: MemberProfileActionR
     lastName: textValue(formData, "last_name"),
     joinedYear: textValue(formData, "joined_year"),
     exitYear: textValue(formData, "exit_year"),
-    studyProgram: textValue(formData, "study_program"),
-    institution: textValue(formData, "institution"),
+    studyProgramId: textValue(formData, "study_program_id"),
+    institutionId: textValue(formData, "institution_id"),
     phone: textValue(formData, "phone"),
     sex: textValue(formData, "sex"),
   });
@@ -53,6 +53,17 @@ export async function saveOwnMemberProfileAction(_previous: MemberProfileActionR
   const input = parsed.data;
   const currentYear = Number(new Intl.DateTimeFormat("en", { year: "numeric", timeZone: "Asia/Kolkata" }).format(new Date()));
   if (input.exitYear < currentYear || input.exitYear < input.joinedYear) return { error: "L’année de fin de cycle ne peut pas être antérieure à l’année en cours ni à l’année d’adhésion." };
+
+  // FormData is untrusted: resolve submitted IDs against the active references
+  // before calling the profile RPC. The database trigger validates active names
+  // again when it writes the education period.
+  const [{ data: studyProgram, error: studyProgramError }, { data: institution, error: institutionError }] = await Promise.all([
+    supabase.from("study_programs").select("id,name").eq("id", input.studyProgramId).eq("is_active", true).maybeSingle(),
+    supabase.from("member_institutions").select("id,name").eq("id", input.institutionId).eq("is_active", true).maybeSingle(),
+  ]);
+  if (studyProgramError || institutionError) return { error: "Les listes de filières et d’établissements n’ont pas pu être vérifiées. Réessayez." };
+  if (!studyProgram) return { error: "Choisissez une filière active dans la liste. Si elle manque, contactez l’administration ADEIO." };
+  if (!institution) return { error: "Choisissez un établissement actif dans la liste. Si celui-ci manque, contactez l’administration ADEIO." };
 
   const photo = await validPhoto(formData.get("photo"));
   if (photo === false) return { error: "La photo doit être une image WebP ou JPEG compressée de 500 Ko maximum." };
@@ -73,8 +84,8 @@ export async function saveOwnMemberProfileAction(_previous: MemberProfileActionR
       p_last_name: input.lastName,
       p_joined_year: input.joinedYear,
       p_exit_year: input.exitYear,
-      p_study_program: input.studyProgram,
-      p_institution: input.institution,
+      p_study_program: studyProgram.name,
+      p_institution: institution.name,
       p_phone: input.phone,
       p_sex: input.sex || null,
     });

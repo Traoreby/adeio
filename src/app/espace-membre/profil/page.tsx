@@ -45,14 +45,16 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
   ]);
   if (profile?.must_change_password) redirect("/mot-de-passe");
 
-  const [{ data: details }, { data: periods }, { data: educationRows }, { data: approvedYearsLocked }, { data: studyPrograms }, { data: institutions }] = member ? await Promise.all([
+  const [{ data: details }, { data: periods }, { data: educationRows }, { data: approvedYearsLocked }] = member ? await Promise.all([
     supabase.from("member_private_details").select("phone,sex").eq("member_id", member.id).maybeSingle(),
     supabase.from("membership_periods").select("id,starts_on,ends_on,note").eq("member_id", member.id).order("starts_on", { ascending: false }),
-    supabase.from("member_education_periods").select("id,study_program,institution,starts_on,ends_on,is_current").eq("member_id", member.id).order("starts_on", { ascending: false }),
+    supabase.from("member_education_periods").select("id,study_program,institution,study_program_id,institution_id,starts_on,ends_on,is_current").eq("member_id", member.id).order("starts_on", { ascending: false }),
     supabase.rpc("own_member_card_years_locked"),
-    supabase.from("study_programs").select("name").eq("is_active", true).order("normalized_name").limit(500),
-    supabase.from("member_institutions").select("name").eq("is_active", true).order("normalized_name").limit(500),
-  ]) : [{ data: null }, { data: null }, { data: null }, { data: false }, { data: [] }, { data: [] }];
+  ]) : [{ data: null }, { data: null }, { data: null }, { data: false }];
+  const [{ data: studyPrograms }, { data: institutions }] = await Promise.all([
+    supabase.from("study_programs").select("id,name").eq("is_active", true).order("normalized_name").limit(500),
+    supabase.from("member_institutions").select("id,name").eq("is_active", true).order("normalized_name").limit(500),
+  ]);
   const photoUrl = member?.photo_path ? `/api/member-photos/${member.id}` : null;
   const isReactivation = member?.status === "former" && onboarding?.kind === "reactivation" && onboarding.status === "pending";
   const waitingForAdmin = member?.status === "former" && onboarding?.kind === "reactivation" && onboarding.status === "profile_submitted";
@@ -87,7 +89,22 @@ export default async function MyMemberProfilePage({ searchParams }: Props) {
           <div className="admin-form-grid"><div><label htmlFor="first_name">Prénom(s) *</label><input id="first_name" name="first_name" required maxLength={100} defaultValue={member?.first_name ?? ""} /></div><div><label htmlFor="last_name">Nom *</label><input id="last_name" name="last_name" required maxLength={100} defaultValue={member?.last_name ?? ""} /></div></div>
           <div className="admin-form-grid"><div><label htmlFor="joined_year">Année d’adhésion initiale *</label><input id="joined_year" name="joined_year" type="number" min="1900" max="2200" required defaultValue={member?.joined_year ?? ""} readOnly={Boolean(member)} /></div><div><label htmlFor="exit_year">Année de fin de cycle *</label><input id="exit_year" name="exit_year" type="number" min="1900" max="2200" required defaultValue={member?.exit_year ?? ""} readOnly={Boolean(member && approvedYearsLocked && !isReactivation)} /></div></div>
           {member && approvedYearsLocked && !isReactivation && <p className="admin-form-note">Les années validées par le Super Admin sont verrouillées. Contactez l’administration si une correction est nécessaire.</p>}
-          <div className="admin-form-grid"><div><label htmlFor="study_program">Filière *</label><input id="study_program" name="study_program" list="adeio-study-programs" required maxLength={160} defaultValue={currentEducation?.study_program ?? ""} autoComplete="off" /><datalist id="adeio-study-programs">{(studyPrograms ?? []).map((item) => <option key={item.name} value={item.name} />)}</datalist></div><div><label htmlFor="institution">Établissement *</label><input id="institution" name="institution" list="adeio-institutions" required maxLength={200} defaultValue={currentEducation?.institution ?? ""} autoComplete="off" /><datalist id="adeio-institutions">{(institutions ?? []).map((item) => <option key={item.name} value={item.name} />)}</datalist></div></div>
+          <div className="admin-form-grid">
+            <div>
+              <label htmlFor="study_program_id">Filière *</label>
+              <select id="study_program_id" name="study_program_id" required defaultValue={currentEducation?.study_program_id ?? ""}>
+                <option value="" disabled>Choisir une filière</option>
+                {(studyPrograms ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="institution_id">Établissement *</label>
+              <select id="institution_id" name="institution_id" required defaultValue={currentEducation?.institution_id ?? ""}>
+                <option value="" disabled>Choisir un établissement</option>
+                {(institutions ?? []).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              </select>
+            </div>
+          </div>
           <div className="admin-form-grid"><div><label htmlFor="phone">Téléphone *</label><input id="phone" name="phone" type="tel" required maxLength={40} defaultValue={details?.phone ?? ""} /></div><div><label htmlFor="sex">Sexe{isNewOnboarding || isReactivation || !details?.sex ? " *" : ""}</label><select id="sex" name="sex" required={Boolean(isNewOnboarding || isReactivation || !details?.sex)} defaultValue={details?.sex === "female" || details?.sex === "male" ? details.sex : ""}><option value="">{details?.sex && details.sex !== "female" && details.sex !== "male" ? "Conserver la valeur historique" : "Choisir une option"}</option><option value="female">Femme</option><option value="male">Homme</option></select>{details?.sex && details.sex !== "female" && details.sex !== "male" && <small>Votre ancienne valeur est conservée si vous ne sélectionnez pas un nouveau choix.</small>}</div></div>
           <MemberPhotoInput required={Boolean(isReactivation)} />
           <label className="admin-form-checkbox"><input type="checkbox" name="photo_public_consent" defaultChecked={Boolean(member?.photo_public_consent)} /> J’autorise l’affichage de ma photo sur la page publique de vérification du QR Code.</label>
