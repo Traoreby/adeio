@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getSignedInUser, hasRequiredMfa } from "@/lib/auth";
+import { createBlankFinancialReportData, FINANCIAL_REPORT_SECTIONS, financialReportTitle, type FinancialReportData } from "@/lib/financial-report";
 
 const financeRoles = ["treasurer", "auditor", "super_admin"] as const;
 const methods = ["cash", "mobile_money", "bank_transfer", "other"] as const;
@@ -266,42 +267,148 @@ export async function setContributionDueConcernStatusAction(input: { dueId: stri
   return { ok: true, message: parsed.data.isNotConcerned ? "Mois marqué comme non concerné." : "Le mois est de nouveau payable." };
 }
 
-export async function publishFinancialReportAction(formData: FormData) {
-  const path = "/gestion-financiere/bilans";
-  const { supabase, user } = await requireFinanceUser(path);
-  const parsed = z.object({
-    title: z.string().trim().min(3).max(160),
-    periodStart: z.string().date(),
-    periodEnd: z.string().date(),
-    summary: z.string().trim().max(1000),
-  }).safeParse({
-    title: value(formData, "title"),
-    periodStart: value(formData, "period_start"),
-    periodEnd: value(formData, "period_end"),
-    summary: value(formData, "summary"),
-  });
-  if (!parsed.success || parsed.data.periodEnd < parsed.data.periodStart) redirect(`${path}?erreur=rapport-invalide`);
-  const { data: summaries, error: summaryError } = await supabase.rpc("get_financial_summary_inr", { p_from: parsed.data.periodStart, p_to: parsed.data.periodEnd });
-  const summary = summaries?.[0];
-  if (summaryError || !summary) redirect(`${path}?erreur=publication-impossible`);
+const reportCellSchema = z.object({
+  label: z.string().max(300),
+  quantity: z.string().max(24),
+  unitPrice: z.string().max(24),
+  amount: z.string().max(24),
+  percent: z.string().max(24),
+}).strict();
+const reportDateSchema = z.string().date();
+const numericCellValue = z.string().refine((value) => value === "" || /^\d{1,14}(?:\.\d{1,2})?$/.test(value), "Montant invalide.");
+const validatedCellSchema = reportCellSchema.extend({ quantity: numericCellValue, unitPrice: numericCellValue, amount: numericCellValue, percent: numericCellValue });
+const validatedSideSchema = z.object({ sections: z.array(z.object({ key: z.string(), title: z.string(), rows: z.array(validatedCellSchema).max(100), subtotal: validatedCellSchema }).strict()), total: validatedCellSchema });
+const validatedReportDataSchema = z.object({ emplois: validatedSideSchema, ressources: validatedSideSchema }).strict();
 
-  const { error: insertError } = await supabase.from("financial_reports").insert({
-    title: parsed.data.title,
+async function requireReportTreasurer(path: string) {
+  const { supabase, user, roles } = await getSignedInUser();
+  if (!supabase || !user) redirect(`/connexion?next=${encodeURIComponent(path)}`);
+  if (!roles.includes("treasurer") || roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  if (!await hasRequiredMfa(supabase, user.id)) redirect(`/auth/mfa?next=${encodeURIComponent(path)}`);
+  return { supabase, user };
+}
+
+function parseReportData(raw: string): FinancialReportData | null {
+  let input: unknown;
+  try { input = JSON.parse(raw); } catch { return null; }
+  const parsed = validatedReportDataSchema.safeParse(input);
+  if (!parsed.success) return null;
+  for (const side of ["emplois", "ressources"] as const) {
+    const expected = FINANCIAL_REPORT_SECTIONS[side];
+    const sections = parsed.data[side].sections;
+    if (sections.length !== expected.length || sections.some((section, index) => section.key !== `${side === "emplois" ? "emploi" : "ressource"}-${index + 1}` || section.title !== expected[index])) return null;
+  }
+  return parsed.data as FinancialReportData;
+}
+
+function hasReportEntries(data: FinancialReportData) {
+  const sides = [data.emplois, data.ressources];
+  return sides.some((side) => side.sections.some((section) => section.rows.some((cell) => cell.label.trim() || cell.quantity || cell.unitPrice || cell.amount || cell.percent)
+    || section.subtotal.quantity || section.subtotal.unitPrice || section.subtotal.amount || section.subtotal.percent)
+    || side.total.quantity || side.total.unitPrice || side.total.amount || side.total.percent);
+}
+
+export async function createFinancialReportDraftAction(formData: FormData) {
+  const path = "/gestion-financiere/bilans";
+  const { supabase, user } = await requireReportTreasurer(path);
+  const parsed = z.object({ periodStart: reportDateSchema, periodEnd: reportDateSchema }).safeParse({
+    periodStart: value(formData, "period_start"), periodEnd: value(formData, "period_end"),
+  });
+  if (!parsed.success || parsed.data.periodEnd < parsed.data.periodStart) redirect(`${path}?erreur=periode-invalide`);
+  const { data: author } = await supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle();
+  const { data: created, error } = await supabase.from("financial_reports").insert({
+    title: financialReportTitle(parsed.data.periodStart, parsed.data.periodEnd),
     period_start: parsed.data.periodStart,
     period_end: parsed.data.periodEnd,
-    summary: parsed.data.summary || null,
+    report_data: createBlankFinancialReportData(),
+    summary: null,
     storage_path: null,
     file_name: null,
     mime_type: null,
-    total_income_inr: summary.total_income_inr,
-    total_expense_inr: summary.total_expense_inr,
-    net_balance_inr: summary.net_balance_inr,
-    transaction_count: summary.transaction_count,
     created_by: user.id,
-  });
-  if (insertError) redirect(`${path}?erreur=publication-impossible`);
+    author_name: author?.display_name?.trim() || "Trésorier ADEIO",
+  }).select("id").single();
+  if (error || !created) redirect(`${path}?erreur=creation-impossible`);
   revalidatePath(path);
+  redirect(`${path}/${created.id}?statut=brouillon-cree`);
+}
+
+export async function saveFinancialReportDraftAction(formData: FormData) {
+  const id = value(formData, "report_id");
+  const validId = z.string().uuid().safeParse(id);
+  const path = validId.success ? `/gestion-financiere/bilans/${id}` : "/gestion-financiere/bilans";
+  const { supabase } = await requireReportTreasurer(path);
+  const parsed = z.object({ id: z.string().uuid(), start: reportDateSchema, end: reportDateSchema, raw: z.string().max(500_000) }).safeParse({
+    id, start: value(formData, "period_start"), end: value(formData, "period_end"), raw: value(formData, "report_data"),
+  });
+  const data = parsed.success ? parseReportData(parsed.data.raw) : null;
+  if (!parsed.success || !data || parsed.data.end < parsed.data.start) redirect(`${path}?erreur=rapport-invalide`);
+  const { error } = await supabase.from("financial_reports").update({
+    title: financialReportTitle(parsed.data.start, parsed.data.end),
+    period_start: parsed.data.start,
+    period_end: parsed.data.end,
+    report_data: data,
+    updated_at: new Date().toISOString(),
+  }).eq("id", parsed.data.id).is("published_at", null);
+  if (error) redirect(`${path}?erreur=enregistrement-impossible`);
+  revalidatePath(path);
+  revalidatePath("/gestion-financiere/bilans");
+  redirect(`${path}?statut=brouillon-enregistre`);
+}
+
+export async function publishManualFinancialReportAction(formData: FormData) {
+  const id = value(formData, "report_id");
+  const validId = z.string().uuid().safeParse(id);
+  const path = validId.success ? `/gestion-financiere/bilans/${id}` : "/gestion-financiere/bilans";
+  const { supabase, user } = await requireReportTreasurer(path);
+  const parsed = z.object({ id: z.string().uuid(), start: reportDateSchema, end: reportDateSchema, raw: z.string().max(500_000) }).safeParse({
+    id, start: value(formData, "period_start"), end: value(formData, "period_end"), raw: value(formData, "report_data"),
+  });
+  const data = parsed.success ? parseReportData(parsed.data.raw) : null;
+  if (!parsed.success || !data || parsed.data.end < parsed.data.start || !hasReportEntries(data)) redirect(`${path}?erreur=rapport-invalide`);
+  const { error } = await supabase.from("financial_reports").update({
+    title: financialReportTitle(parsed.data.start, parsed.data.end),
+    period_start: parsed.data.start,
+    period_end: parsed.data.end,
+    report_data: data,
+    published_at: new Date().toISOString(),
+    published_by: user.id,
+    updated_at: new Date().toISOString(),
+  }).eq("id", parsed.data.id).is("published_at", null);
+  if (error) redirect(`${path}?erreur=publication-impossible`);
+  revalidatePath(path);
+  revalidatePath("/gestion-financiere/bilans");
   revalidatePath("/finances");
-  revalidatePath("/espace-membre/documents");
-  redirect(`${path}?statut=bilan-publie`);
+  redirect(`${path}?statut=rapport-publie`);
+}
+
+export async function createFinancialReportVersionAction(formData: FormData) {
+  const sourceId = value(formData, "report_id");
+  const validId = z.string().uuid().safeParse(sourceId);
+  const path = "/gestion-financiere/bilans";
+  const { supabase, user } = await requireReportTreasurer(path);
+  if (!validId.success) redirect(`${path}?erreur=version-impossible`);
+  const { data: source } = await supabase.from("financial_reports").select("id,title,period_start,period_end,summary,report_data,created_by,author_name,version,published_at").eq("id", sourceId).maybeSingle();
+  if (!source?.published_at) redirect(`${path}?erreur=version-impossible`);
+  const { data: child } = await supabase.from("financial_reports").select("id").eq("previous_version_id", source.id).maybeSingle();
+  if (child) redirect(`${path}?erreur=version-existe`);
+  const { data: author } = await supabase.from("profiles").select("display_name").eq("user_id", user.id).maybeSingle();
+  const reportData = parseReportData(JSON.stringify(source.report_data)) ?? createBlankFinancialReportData();
+  const { data: created, error } = await supabase.from("financial_reports").insert({
+    title: source.title,
+    period_start: source.period_start,
+    period_end: source.period_end,
+    report_data: reportData,
+    summary: source.summary,
+    storage_path: null,
+    file_name: null,
+    mime_type: null,
+    created_by: user.id,
+    author_name: author?.display_name?.trim() || "Trésorier ADEIO",
+    version: source.version + 1,
+    previous_version_id: source.id,
+  }).select("id").single();
+  if (error || !created) redirect(`${path}?erreur=version-impossible`);
+  revalidatePath(path);
+  redirect(`${path}/${created.id}?statut=nouvelle-version`);
 }
