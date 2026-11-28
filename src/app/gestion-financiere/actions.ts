@@ -84,7 +84,6 @@ export async function createFinancialTransactionAction(formData: FormData) {
     direction: parsed.data.direction,
     category_id: parsed.data.categoryId,
     label: parsed.data.label,
-    amount_fcfa: null,
     amount_inr: parsed.data.amount,
     currency_code: "INR",
     payment_method: parsed.data.method,
@@ -149,7 +148,6 @@ export async function createContributionPlanAction(formData: FormData) {
   if (!parsed.success) redirect(`${path}?erreur=plan-invalide`);
   const { error } = await supabase.from("contribution_plans").insert({
     name: parsed.data.name,
-    amount_fcfa: null,
     amount_inr: parsed.data.amountInr,
     currency_code: "INR",
     periodicity: "monthly",
@@ -234,13 +232,9 @@ export async function publishFinancialReportAction(formData: FormData) {
     summary: value(formData, "summary"),
   });
   if (!parsed.success || parsed.data.periodEnd < parsed.data.periodStart) redirect(`${path}?erreur=rapport-invalide`);
-  const [{ data: summaries, error: summaryError }, { data: currencySummaries, error: currencySummaryError }] = await Promise.all([
-    supabase.rpc("get_financial_summary", { p_from: parsed.data.periodStart, p_to: parsed.data.periodEnd }),
-    supabase.rpc("get_financial_summary_by_currency", { p_from: parsed.data.periodStart, p_to: parsed.data.periodEnd }),
-  ]);
+  const { data: summaries, error: summaryError } = await supabase.rpc("get_financial_summary_inr", { p_from: parsed.data.periodStart, p_to: parsed.data.periodEnd });
   const summary = summaries?.[0];
-  const inrSummary = (currencySummaries as Array<{ currency_code: string; total_income: number; total_expense: number; net_balance: number }> | null)?.find((item) => item.currency_code === "INR");
-  if (summaryError || currencySummaryError || !summary || !inrSummary) redirect(`${path}?erreur=publication-impossible`);
+  if (summaryError || !summary) redirect(`${path}?erreur=publication-impossible`);
 
   const { error: insertError } = await supabase.from("financial_reports").insert({
     title: parsed.data.title,
@@ -250,12 +244,9 @@ export async function publishFinancialReportAction(formData: FormData) {
     storage_path: null,
     file_name: null,
     mime_type: null,
-    total_income_fcfa: summary.total_income_fcfa,
-    total_expense_fcfa: summary.total_expense_fcfa,
-    net_balance_fcfa: summary.net_balance_fcfa,
-    total_income_inr: inrSummary.total_income,
-    total_expense_inr: inrSummary.total_expense,
-    net_balance_inr: inrSummary.net_balance,
+    total_income_inr: summary.total_income_inr,
+    total_expense_inr: summary.total_expense_inr,
+    net_balance_inr: summary.net_balance_inr,
     transaction_count: summary.transaction_count,
     created_by: user.id,
   });

@@ -20,7 +20,7 @@ export function ContributionPlanForm() {
     </div>
     <div className="admin-form-grid">
       <div><label htmlFor="plan-year">Année financière</label><input id="plan-year" name="financial_year" type="number" min="1900" max="2200" required defaultValue={currentYear} /></div>
-      <p className="form-helper">Le plan couvre janvier à décembre. Les échéances sont créées une fois par membre et par mois; les anciens plans XOF restent archivés séparément sans conversion.</p>
+      <p className="form-helper">Le plan couvre janvier à décembre. Les échéances sont créées une fois par membre et par mois.</p>
     </div>
     <FinanceSubmitButton pendingLabel="Création du plan…">Créer le plan INR</FinanceSubmitButton>
   </form>;

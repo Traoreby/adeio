@@ -25,16 +25,8 @@ export function currentFinancialPeriod(value: string, now = new Date()) {
   return { from: `${year}-${String(firstMonth).padStart(2, "0")}-01`, to: today };
 }
 
-export function formatFcfa(amount: number | string | null | undefined) {
-  return `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(Number(amount ?? 0))} FCFA`;
-}
-
 export function formatInr(amount: number | string | null | undefined) {
   return `₹${new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 }).format(Number(amount ?? 0))}`;
-}
-
-export function formatFinancialAmount(currency: string, amountFcfa: number | string | null | undefined, amountInr: number | string | null | undefined) {
-  return currency === "INR" ? formatInr(amountInr) : formatFcfa(amountFcfa);
 }
 
 export function formatFinancialDate(value: string) {

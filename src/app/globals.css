@@ -806,6 +806,29 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .finance-quick-links a { display: flex; align-items: center; gap: 10px; padding: 15px; border: 1px solid #e1e9e3; border-radius: 12px; background: #fff; color: #176c45; font-size: 14px; font-weight: 650; }
 .finance-quick-links a svg:last-child { margin-left: auto; }
 .finance-stats { margin-bottom: 18px; }
+.contribution-overview { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.contribution-toolbox { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 16px 0 24px; }
+.contribution-tool { min-width: 0; }
+.contribution-tool > summary { display: flex; align-items: center; gap: 10px; cursor: pointer; list-style: none; color: #183d2c; font-size: 17px; font-weight: 800; }
+.contribution-tool > summary::-webkit-details-marker { display: none; }
+.contribution-tool > summary::after { content: "+"; margin-left: auto; color: #f77f00; font-size: 22px; }
+.contribution-tool[open] > summary::after { content: "−"; }
+.contribution-tool > p { margin: 8px 0 16px; color: #4b5b50; font-size: 14px; }
+.contribution-plan-create { margin: 18px 0; padding: 16px; border: 1px solid #e2e9e4; border-radius: 12px; background: #f8faf8; }
+.contribution-plan-create h3 { margin: 0 0 10px; font-size: 16px; }
+.contribution-ledger-card { margin-top: 18px; }
+.contribution-ledger th, .contribution-ledger td { vertical-align: middle; }
+.contribution-ledger td strong { display: block; }
+.contribution-ledger td small { display: block; margin-top: 3px; color: #526157; }
+.contribution-detail-heading { display: flex; align-items: end; justify-content: space-between; gap: 20px; }
+.contribution-detail-heading .eyebrow { margin-top: 14px; }
+.contribution-detail-heading h1 { margin-bottom: 4px; }
+.contribution-year-select { display: flex; align-items: end; gap: 8px; }
+.contribution-year-select label { display: grid; gap: 5px; color: #26352b; font-size: 13px; font-weight: 700; }
+.contribution-year-select input { width: 130px; min-height: 44px; border: 1px solid #cbd6ce; border-radius: 9px; padding: 8px 10px; font: inherit; }
+.contribution-detail-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.contribution-payment-history-row { align-items: start; }
+.contribution-payment-history-row p { margin: 4px 0; }
 .finance-amount { color: #176c45; font-weight: 750; white-space: nowrap; }
 .finance-filter-form { display: flex; align-items: end; flex-wrap: wrap; gap: 10px; }
 .finance-filter-form label, .finance-generate-form label { display: grid; gap: 5px; color: #38423b; font-size: 12px; font-weight: 650; }
@@ -844,6 +867,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .audit-json-grid h3 { margin: 0 0 8px; font-size: 12px; }
 .audit-json-grid pre { max-height: 320px; overflow: auto; margin: 0; color: #334139; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
 @media (max-width: 700px) {
+  .contribution-overview, .contribution-toolbox, .contribution-detail-stats { grid-template-columns: minmax(0, 1fr); }
+  .contribution-detail-heading { align-items: stretch; flex-direction: column; }
+  .contribution-year-select { align-items: end; flex-wrap: wrap; }
+  .contribution-ledger { min-width: 980px; }
   .finance-filter-form { align-items: stretch; flex-direction: column; }
   .finance-filter-form input, .finance-filter-form select { width: 100%; }
   .finance-export-links { width: 100%; }
