@@ -34,7 +34,7 @@ export default async function ContributionMemberDetailsPage({ params, searchPara
   const payments = (paymentRows ?? []) as Payment[];
   const paymentCount = payments[0]?.total_count ?? 0;
   const monthLabel = (number: number) => monthNames[number - 1] ?? "Mois inconnu";
-  const statusText = (status: string) => status === "paid" ? "Payé" : status === "partial" ? "Partiellement payé" : status === "not_generated" ? "Non généré" : "Non payé";
+  const statusText = (status: string) => status === "not_concerned" ? "Non concerné" : status === "paid" ? "Payé" : status === "partial" ? "Partiellement payé" : status === "not_generated" ? "Non généré" : "Non payé";
 
   return <>
     <div className="admin-page-heading contribution-detail-heading"><div><Link href={`/gestion-financiere/cotisations?annee=${year}`} className="text-link"><ArrowLeft size={15} /> Retour aux cotisations</Link><div className="eyebrow eyebrow-green">DÉTAIL DU MEMBRE · {year}</div><h1>{member.first_name} {member.last_name}</h1><p>{member.member_number} · {member.sex === "male" ? "Homme" : member.sex === "female" ? "Femme" : "Genre non renseigné"} · {member.status === "active" ? "Actif" : "Archivé"}</p></div><form className="contribution-year-select" method="get"><label htmlFor="detail-year">Année financière</label><input id="detail-year" type="number" name="annee" min="1900" max="2200" defaultValue={year} /><button className="admin-submit admin-submit-secondary" type="submit">Afficher</button></form></div>

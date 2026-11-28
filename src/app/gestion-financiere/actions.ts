@@ -217,6 +217,29 @@ export async function recordContributionPaymentAction(formData: FormData) {
   redirect(`${path}?annee=${parsed.data.financialYear}&statut=paiement-enregistre${reference ? `&reference=${encodeURIComponent(reference)}` : ""}`);
 }
 
+export async function setContributionDueConcernStatusAction(input: { dueId: string; isNotConcerned: boolean; reason: string }) {
+  const path = "/gestion-financiere/cotisations";
+  const { supabase } = await requireFinanceUser(path);
+  const parsed = z.object({ dueId: z.string().uuid(), isNotConcerned: z.boolean(), reason: z.string().trim().min(3).max(500) }).safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Indiquez un motif de 3 à 500 caractères." };
+  const { error } = await supabase.rpc("set_contribution_due_not_concerned", {
+    p_due_id: parsed.data.dueId,
+    p_is_not_concerned: parsed.data.isNotConcerned,
+    p_reason: parsed.data.reason,
+  });
+  if (error) {
+    return { ok: false, message: error.code === "23514"
+      ? "Ce mois a déjà reçu un paiement et ne peut pas être déclaré non concerné."
+      : error.code === "42501"
+        ? "Cette opération est réservée au personnel financier autorisé."
+        : "Le statut du mois n’a pas pu être modifié. Vérifiez son statut puis réessayez." };
+  }
+  revalidatePath(path);
+  revalidatePath("/gestion-financiere");
+  revalidatePath("/espace-membre/cotisations");
+  return { ok: true, message: parsed.data.isNotConcerned ? "Mois marqué comme non concerné." : "Le mois est de nouveau payable." };
+}
+
 export async function publishFinancialReportAction(formData: FormData) {
   const path = "/gestion-financiere/bilans";
   const { supabase, user } = await requireFinanceUser(path);

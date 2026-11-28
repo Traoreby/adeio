@@ -10,16 +10,16 @@ export default async function MyContributionsPage() {
   if (!user) redirect("/connexion?next=%2Fespace-membre%2Fcotisations");
   const { data: member } = await supabase.from("members").select("id,member_number,first_name,last_name").eq("user_id", user.id).maybeSingle();
   if (!member) return <section className="member-space-page section-pad"><div className="container member-space-empty"><h1>Fiche membre non associée</h1><p>Demandez à l’administration de relier votre compte à votre fiche ADEIO.</p><Link href="/espace-membre" className="text-link"><ArrowLeft size={14} /> Retour à mon espace</Link></div></section>;
-  const { data: dues } = await supabase.from("contribution_dues").select("id,period_start,period_end,due_on,amount_due_inr,contribution_plans(name),contribution_allocations(amount_inr,contribution_payments(paid_on))").eq("member_id", member.id).eq("currency_code", "INR").order("due_on", { ascending: false }).limit(480);
+  const { data: dues } = await supabase.from("contribution_dues").select("id,period_start,period_end,due_on,amount_due_inr,is_not_concerned,contribution_plans(name),contribution_allocations(amount_inr,contribution_payments(paid_on))").eq("member_id", member.id).eq("currency_code", "INR").order("due_on", { ascending: false }).limit(480);
   const rows = (dues ?? []).map((due) => {
     const paid = (due.contribution_allocations ?? []).reduce((sum, allocation) => sum + Number(allocation.amount_inr ?? 0), 0);
-    const amountDue = Number(due.amount_due_inr ?? 0);
+    const amountDue = due.is_not_concerned ? 0 : Number(due.amount_due_inr ?? 0);
     return { ...due, amountDue, paid, remaining: Math.max(0, amountDue - paid) };
   });
   const total = (key: "amountDue" | "paid" | "remaining") => rows.reduce((sum, due) => sum + due[key], 0);
   const unpaidMonths = rows.filter((due) => due.remaining > 0).length;
 
-  const renderRows = (list: typeof rows, formatter: (value: number) => string) => list.map((due) => <tr key={due.id}><td>{due.contribution_plans?.[0]?.name ?? "Cotisation"}</td><td>{formatFinancialDate(due.period_start)} – {formatFinancialDate(due.period_end)}</td><td>{formatFinancialDate(due.due_on)}</td><td>{formatter(due.amountDue)}</td><td>{formatter(due.paid)}</td><td className={due.remaining > 0 ? "finance-amount" : ""}>{formatter(due.remaining)}</td><td><span className={`status-chip ${due.remaining > 0 ? "draft" : ""}`}>{due.remaining > 0 ? due.paid ? "Partiellement payée" : "À régler" : "Payée"}</span></td></tr>);
+  const renderRows = (list: typeof rows, formatter: (value: number) => string) => list.map((due) => <tr key={due.id}><td>{due.contribution_plans?.[0]?.name ?? "Cotisation"}</td><td>{formatFinancialDate(due.period_start)} – {formatFinancialDate(due.period_end)}</td><td>{formatFinancialDate(due.due_on)}</td><td>{formatter(due.amountDue)}</td><td>{formatter(due.paid)}</td><td className={due.remaining > 0 ? "finance-amount" : ""}>{formatter(due.remaining)}</td><td><span className={`status-chip ${due.is_not_concerned ? "" : due.remaining > 0 ? "draft" : ""}`}>{due.is_not_concerned ? "Non concerné" : due.remaining > 0 ? due.paid ? "Partiellement payée" : "À régler" : "Payée"}</span></td></tr>);
 
   return <section className="member-space-page section-pad"><div className="container">
     <div className="member-space-heading"><div><div className="eyebrow eyebrow-green">SUIVI PERSONNEL</div><h1>Mes cotisations</h1><p>{member.first_name} {member.last_name} · {member.member_number}</p></div><Link href="/espace-membre" className="text-link"><ArrowLeft size={14} /> Mon espace</Link></div>
