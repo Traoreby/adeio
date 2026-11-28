@@ -91,7 +91,7 @@ export default async function MyContributionsPage() {
   for (let offset = 0; ; offset += pageSize) {
     const { data, error } = await supabase
       .from("contribution_dues")
-      .select("id,plan_id,period_start,period_end,due_on,amount_due_inr,is_not_concerned,not_concerned_reason,contribution_plans(id,name,amount_inr,currency_code,starts_on,ends_on,executive_term_id,executive_terms(title,starts_on,ends_on)),contribution_allocations(amount_inr,contribution_payments(id,paid_on,amount_inr,payment_method,reference,note))")
+      .select("id,plan_id,period_start,period_end,due_on,amount_due_inr,is_not_concerned,not_concerned_reason,contribution_plans(id,name,amount_inr,currency_code,starts_on,ends_on,executive_term_id,executive_terms(title,starts_on,ends_on)),contribution_allocations!contribution_allocations_due_id_member_id_fkey(amount_inr,contribution_payments!contribution_allocations_payment_id_member_id_fkey(id,paid_on,amount_inr,payment_method,reference,note))")
       .eq("member_id", member.id)
       .eq("currency_code", "INR")
       .order("period_start", { ascending: true })
