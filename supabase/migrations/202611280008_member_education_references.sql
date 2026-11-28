@@ -40,15 +40,59 @@ alter table public.member_education_periods
   add column study_program_id uuid references public.study_programs(id) on delete restrict,
   add column institution_id uuid references public.member_institutions(id) on delete restrict;
 
-update public.member_education_periods education
-set study_program_id = program.id
-from public.study_programs program
-where program.normalized_name = lower(regexp_replace(trim(education.study_program), '[[:space:]]+', ' ', 'g'));
+-- Keep the migration backfill separate from membership_periods.note guards.
+-- The shared protect_member_history() trigger function references NEW.note,
+-- which is not a field on member_education_periods. Permit only this exact
+-- one-time FK backfill while preserving the normal education history rules.
+create or replace function public.protect_member_education_reference_backfill()
+returns trigger language plpgsql set search_path = public
+as $$
+begin
+  if tg_op = 'DELETE' then
+    raise exception 'L’historique des formations est conservé.' using errcode = '55000';
+  end if;
+
+  if old.study_program_id is null
+    and old.institution_id is null
+    and new.study_program_id is not null
+    and new.institution_id is not null
+    and old.member_id is not distinct from new.member_id
+    and old.study_program is not distinct from new.study_program
+    and old.institution is not distinct from new.institution
+    and old.starts_on is not distinct from new.starts_on
+    and old.ends_on is not distinct from new.ends_on
+    and old.is_current is not distinct from new.is_current
+    and old.created_by is not distinct from new.created_by
+    and old.created_at is not distinct from new.created_at then
+    return new;
+  end if;
+
+  if old.member_id is distinct from new.member_id
+    or old.study_program is distinct from new.study_program
+    or old.institution is distinct from new.institution
+    or old.starts_on is distinct from new.starts_on
+    or old.created_by is distinct from new.created_by
+    or old.created_at is distinct from new.created_at
+    or old.is_current is false or new.is_current is true
+    or new.ends_on is null
+    or (old.ends_on is not null and new.ends_on >= old.ends_on) then
+    raise exception 'Une formation historique est immuable ; clôturez la formation courante puis ajoutez-en une nouvelle.' using errcode = '55000';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function public.protect_member_education_reference_backfill() from public, anon, authenticated;
+drop trigger if exists protect_member_education_history on public.member_education_periods;
+create trigger protect_member_education_history
+  before update or delete on public.member_education_periods
+  for each row execute function public.protect_member_education_reference_backfill();
 
 update public.member_education_periods education
-set institution_id = institution.id
-from public.member_institutions institution
-where institution.normalized_name = lower(regexp_replace(trim(education.institution), '[[:space:]]+', ' ', 'g'));
+set study_program_id = program.id,
+    institution_id = institution.id
+from public.study_programs program, public.member_institutions institution
+where program.normalized_name = lower(regexp_replace(trim(education.study_program), '[[:space:]]+', ' ', 'g'))
+  and institution.normalized_name = lower(regexp_replace(trim(education.institution), '[[:space:]]+', ' ', 'g'));
 
 alter table public.member_education_periods
   alter column study_program_id set not null,
