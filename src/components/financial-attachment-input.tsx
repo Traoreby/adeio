@@ -6,7 +6,7 @@ import { prepareImageUpload } from "@/lib/client-image-processing";
 const IMAGE_LIMIT = 1_000_000;
 const PDF_LIMIT = 2_000_000;
 
-export function FinancialAttachmentInput({ requiredAboveFcfa }: { requiredAboveFcfa: number | null }) {
+export function FinancialAttachmentInput({ requiredAboveInr }: { requiredAboveInr: number | null }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -51,7 +51,7 @@ export function FinancialAttachmentInput({ requiredAboveFcfa }: { requiredAboveF
   }
 
   return <div className="finance-attachment-input"><input ref={inputRef} id="attachment" name="attachment" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => void onChange(event.target.files?.[0])} />
-    <small>PDF jusqu’à 2 Mo · images redimensionnées à 1 200 px et compressées à 1 Mo maximum. {requiredAboveFcfa ? `Obligatoire au-dessus de ${requiredAboveFcfa.toLocaleString("fr-FR")} FCFA.` : "Facultatif par défaut."}</small>
+    <small>PDF jusqu’à 2 Mo · images redimensionnées à 1 200 px et compressées à 1 Mo maximum. {requiredAboveInr ? `Obligatoire au-dessus de ₹${requiredAboveInr.toLocaleString("en-IN")}.` : "Facultatif par défaut."}</small>
     {busy && <span role="status">Compression du justificatif…</span>}{message && <span role={message.startsWith("Image prête") ? "status" : "alert"}>{message}</span>}
   </div>;
 }

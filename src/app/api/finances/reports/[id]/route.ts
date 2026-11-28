@@ -3,7 +3,7 @@ import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { getSignedInUser } from "@/lib/auth";
 
 type RouteProps = { params: Promise<{ id: string }> };
-type Snapshot = { total_income_fcfa: number; total_expense_fcfa: number; net_balance_fcfa: number; transaction_count: number };
+type Snapshot = { total_income_fcfa: number; total_expense_fcfa: number; net_balance_fcfa: number; total_income_inr: number | null; total_expense_inr: number | null; net_balance_inr: number | null; transaction_count: number };
 
 function wrap(text: string, maxLength = 88) {
   const words = text.split(/\s+/);
@@ -27,14 +27,18 @@ export async function GET(_request: Request, { params }: RouteProps) {
     return NextResponse.json({ error: "Bilan introuvable." }, { status: 404 });
   }
   const { data: report, error } = await supabase.from("financial_reports")
-    .select("id,title,period_start,period_end,summary,total_income_fcfa,total_expense_fcfa,net_balance_fcfa,transaction_count")
+    .select("id,title,period_start,period_end,summary,total_income_fcfa,total_expense_fcfa,net_balance_fcfa,total_income_inr,total_expense_inr,net_balance_inr,transaction_count")
     .eq("id", id).maybeSingle();
   if (error || !report) return NextResponse.json({ error: "Bilan introuvable." }, { status: 404 });
 
   let snapshot = report as typeof report & Partial<Snapshot>;
-  if ([snapshot.total_income_fcfa, snapshot.total_expense_fcfa, snapshot.net_balance_fcfa, snapshot.transaction_count].some((value) => typeof value !== "number")) {
-    const { data } = await supabase.rpc("get_financial_summary", { p_from: report.period_start, p_to: report.period_end });
-    if (data?.[0]) snapshot = { ...snapshot, ...data[0] };
+  if ([snapshot.total_income_fcfa, snapshot.total_expense_fcfa, snapshot.net_balance_fcfa, snapshot.total_income_inr, snapshot.total_expense_inr, snapshot.net_balance_inr, snapshot.transaction_count].some((value) => typeof value !== "number")) {
+    const [{ data: xofRows }, { data: currencyRows }] = await Promise.all([
+      supabase.rpc("get_financial_summary", { p_from: report.period_start, p_to: report.period_end }),
+      supabase.rpc("get_financial_summary_by_currency", { p_from: report.period_start, p_to: report.period_end }),
+    ]);
+    const inr = (currencyRows as Array<{ currency_code: string; total_income: number; total_expense: number; net_balance: number }> | null)?.find((row) => row.currency_code === "INR");
+    if (xofRows?.[0]) snapshot = { ...snapshot, ...xofRows[0], total_income_inr: inr?.total_income ?? 0, total_expense_inr: inr?.total_expense ?? 0, net_balance_inr: inr?.net_balance ?? 0 };
   }
 
   const pdf = await PDFDocument.create();
@@ -56,13 +60,17 @@ export async function GET(_request: Request, { params }: RouteProps) {
   page.drawText("SYNTHÈSE", { x: margin, y, size: 10, font: bold, color: green });
   y -= 22;
   const metrics: [string, number | undefined][] = [
-    ["Recettes", snapshot.total_income_fcfa],
-    ["Dépenses", snapshot.total_expense_fcfa],
-    ["Résultat net", snapshot.net_balance_fcfa],
+    ["Recettes XOF", snapshot.total_income_fcfa],
+    ["Dépenses XOF", snapshot.total_expense_fcfa],
+    ["Résultat net XOF", snapshot.net_balance_fcfa],
+    ["Recettes INR", snapshot.total_income_inr ?? undefined],
+    ["Dépenses INR", snapshot.total_expense_inr ?? undefined],
+    ["Résultat net INR", snapshot.net_balance_inr ?? undefined],
     ["Opérations publiées", snapshot.transaction_count],
   ];
   for (const [label, amount] of metrics) {
-    const value = typeof amount === "number" ? `${new Intl.NumberFormat("fr-FR").format(amount)} FCFA` : "—";
+    const isInr = label.endsWith("INR");
+    const value = typeof amount === "number" ? isInr ? `₹${new Intl.NumberFormat("en-IN").format(amount)}` : `${new Intl.NumberFormat("fr-FR").format(amount)} FCFA` : "—";
     page.drawText(label, { x: margin, y, size: 12, font: regular, color: rgb(0.18, 0.23, 0.2) });
     page.drawText(value, { x: 340, y, size: 12, font: bold, color: rgb(0.1, 0.14, 0.12) });
     y -= 25;

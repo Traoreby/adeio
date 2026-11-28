@@ -78,13 +78,13 @@ export async function setFinancialReceiptThresholdAction(formData: FormData) {
   if (!supabase || !user) redirect("/connexion?next=/admin/parametres");
   if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
   if (!await hasRequiredMfa(supabase, user.id)) redirect("/auth/mfa?next=%2Fadmin%2Fparametres");
-  const raw = toStringValue(formData, "threshold_fcfa").replace(/[\s\u00a0]/g, "");
+  const raw = toStringValue(formData, "threshold_inr").replace(/[\s,\u00a0]/g, "");
   if (raw && !/^\d{1,13}$/.test(raw)) redirect("/admin/parametres?erreur=seuil-invalide");
-  const thresholdFcfa = raw ? Number(raw) : null;
-  if (thresholdFcfa !== null && thresholdFcfa < 1) redirect("/admin/parametres?erreur=seuil-invalide");
+  const thresholdInr = raw ? Number(raw) : null;
+  if (thresholdInr !== null && thresholdInr < 1) redirect("/admin/parametres?erreur=seuil-invalide");
   const { error } = await supabase.from("settings").upsert({
-    key: "financial_receipt_required_threshold_fcfa",
-    value: { thresholdFcfa },
+    key: "financial_receipt_required_threshold_inr",
+    value: { thresholdInr },
     updated_by: user.id,
   });
   if (error) redirect("/admin/parametres?erreur=modification-impossible");

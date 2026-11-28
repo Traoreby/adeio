@@ -23,8 +23,8 @@ function value(formData: FormData, key: string) {
   return typeof field === "string" ? field.trim() : "";
 }
 
-function toFcfa(raw: string) {
-  const normalized = raw.replace(/[\s\u00a0]/g, "");
+function toAmount(raw: string) {
+  const normalized = raw.replace(/[\s,\u00a0]/g, "");
   return /^\d{1,13}$/.test(normalized) ? Number(normalized) : Number.NaN;
 }
 
@@ -58,7 +58,7 @@ export async function createFinancialTransactionAction(formData: FormData) {
     direction: value(formData, "direction"),
     categoryId: value(formData, "category_id"),
     label: value(formData, "label"),
-    amount: toFcfa(value(formData, "amount_fcfa")),
+    amount: toAmount(value(formData, "amount_inr")),
     method: value(formData, "payment_method"),
     correctionOf: value(formData, "correction_of") || undefined,
   });
@@ -67,15 +67,15 @@ export async function createFinancialTransactionAction(formData: FormData) {
   const { data: category } = await supabase.from("transaction_categories").select("id,direction,is_active").eq("id", parsed.data.categoryId).maybeSingle();
   if (!category?.is_active || category.direction !== parsed.data.direction) redirect(`${path}?erreur=categorie-invalide`);
   if (parsed.data.correctionOf) {
-    const { data: original } = await supabase.from("financial_transactions").select("id,direction,is_published").eq("id", parsed.data.correctionOf).maybeSingle();
-    if (!original?.is_published || original.direction === parsed.data.direction) redirect(`${path}?erreur=correction-invalide`);
+    const { data: original } = await supabase.from("financial_transactions").select("id,direction,is_published,currency_code").eq("id", parsed.data.correctionOf).maybeSingle();
+    if (!original?.is_published || original.currency_code !== "INR" || original.direction === parsed.data.direction) redirect(`${path}?erreur=correction-invalide`);
   }
 
   const rawAttachment = formData.get("attachment");
   const attachment = await allowedUpload(rawAttachment, ["application/pdf", "image/jpeg", "image/webp"]);
   if (rawAttachment instanceof File && rawAttachment.size > 0 && !attachment) redirect(`${path}?erreur=justificatif-invalide`);
-  const { data: thresholdSetting } = await supabase.from("settings").select("value").eq("key", "financial_receipt_required_threshold_fcfa").maybeSingle();
-  const thresholdValue = thresholdSetting?.value && typeof thresholdSetting.value === "object" ? thresholdSetting.value.thresholdFcfa : null;
+  const { data: thresholdSetting } = await supabase.from("settings").select("value").eq("key", "financial_receipt_required_threshold_inr").maybeSingle();
+  const thresholdValue = thresholdSetting?.value && typeof thresholdSetting.value === "object" ? thresholdSetting.value.thresholdInr : null;
   const requiredThreshold = typeof thresholdValue === "number" && thresholdValue > 0 ? thresholdValue : null;
   if (requiredThreshold !== null && parsed.data.amount > requiredThreshold && !attachment) redirect(`${path}?erreur=justificatif-obligatoire`);
 
@@ -84,7 +84,9 @@ export async function createFinancialTransactionAction(formData: FormData) {
     direction: parsed.data.direction,
     category_id: parsed.data.categoryId,
     label: parsed.data.label,
-    amount_fcfa: parsed.data.amount,
+    amount_fcfa: null,
+    amount_inr: parsed.data.amount,
+    currency_code: "INR",
     payment_method: parsed.data.method,
     correction_of: parsed.data.correctionOf ?? null,
     created_by: user.id,
@@ -135,31 +137,25 @@ export async function createFinancialTransactionAction(formData: FormData) {
 export async function createContributionPlanAction(formData: FormData) {
   const path = "/gestion-financiere/cotisations";
   const { supabase, user } = await requireFinanceUser(path);
-  const amount = toFcfa(value(formData, "amount_fcfa"));
   const parsed = z.object({
     name: z.string().trim().min(3).max(120),
-    amount: z.number().int().positive().max(1_000_000_000_000),
-    periodicity: z.enum(["monthly", "yearly", "custom"]),
-    customDays: z.number().int().positive().max(3650).nullable(),
-    startsOn: z.string().date(),
-    endsOn: z.string().date().nullable(),
+    amountInr: z.number().int().positive().max(1_000_000_000_000),
+    financialYear: z.number().int().min(1900).max(2200),
   }).safeParse({
     name: value(formData, "name"),
-    amount,
-    periodicity: value(formData, "periodicity"),
-    customDays: value(formData, "periodicity") === "custom" ? Number(value(formData, "custom_period_days")) : null,
-    startsOn: value(formData, "starts_on"),
-    endsOn: value(formData, "ends_on") || null,
+    amountInr: toAmount(value(formData, "amount_inr")),
+    financialYear: Number(value(formData, "financial_year")),
   });
-  if (!parsed.success || (parsed.data.periodicity === "custom") !== (parsed.data.customDays !== null)) redirect(`${path}?erreur=plan-invalide`);
-  if (parsed.data.endsOn && parsed.data.endsOn < parsed.data.startsOn) redirect(`${path}?erreur=plan-invalide`);
+  if (!parsed.success) redirect(`${path}?erreur=plan-invalide`);
   const { error } = await supabase.from("contribution_plans").insert({
     name: parsed.data.name,
-    amount_fcfa: parsed.data.amount,
-    periodicity: parsed.data.periodicity,
-    custom_period_days: parsed.data.customDays,
-    starts_on: parsed.data.startsOn,
-    ends_on: parsed.data.endsOn,
+    amount_fcfa: null,
+    amount_inr: parsed.data.amountInr,
+    currency_code: "INR",
+    periodicity: "monthly",
+    custom_period_days: null,
+    starts_on: `${parsed.data.financialYear}-01-01`,
+    ends_on: `${parsed.data.financialYear}-12-31`,
     created_by: user.id,
   });
   if (error) redirect(`${path}?erreur=plan-invalide`);
@@ -170,13 +166,16 @@ export async function createContributionPlanAction(formData: FormData) {
 export async function generateContributionDuesAction(formData: FormData) {
   const path = "/gestion-financiere/cotisations";
   const { supabase } = await requireFinanceUser(path);
-  const parsed = z.string().uuid().safeParse(value(formData, "plan_id"));
+  const parsed = z.object({ planId: z.string().uuid(), year: z.number().int().min(1900).max(2200) }).safeParse({
+    planId: value(formData, "plan_id"),
+    year: Number(value(formData, "financial_year")),
+  });
   if (!parsed.success) redirect(`${path}?erreur=plan-invalide`);
-  const { data, error } = await supabase.rpc("generate_contribution_dues", { p_plan_id: parsed.data, p_through: value(formData, "through") || new Date().toISOString().slice(0, 10) });
+  const { data, error } = await supabase.rpc("generate_contribution_dues_inr", { p_plan_id: parsed.data.planId, p_year: parsed.data.year });
   if (error) redirect(`${path}?erreur=generation-impossible`);
   revalidatePath(path);
   revalidatePath("/espace-membre/cotisations");
-  redirect(`${path}?statut=${encodeURIComponent(`${data ?? 0}-echeance(s)-generee(s)`)}`);
+  redirect(`${path}?annee=${parsed.data.year}&statut=${encodeURIComponent(`${data ?? 0}-mois-de-cotisation-genere(s)`)}`);
 }
 
 export async function recordContributionPaymentAction(formData: FormData) {
@@ -185,31 +184,39 @@ export async function recordContributionPaymentAction(formData: FormData) {
   const parsed = z.object({
     memberId: z.string().uuid(),
     paidOn: z.string().date(),
-    amount: z.number().int().positive().max(1_000_000_000_000),
-    method: z.enum(methods),
+    amountInr: z.number().int().positive().max(1_000_000_000_000),
+    method: z.enum(["cash", "online"]),
+    financialYear: z.number().int().min(1900).max(2200),
+    allocations: z.array(z.object({ due_id: z.string().uuid(), amount_inr: z.number().int().positive().max(1_000_000_000_000) })).min(1).max(12),
     note: z.string().max(500),
   }).safeParse({
     memberId: value(formData, "member_id"),
     paidOn: value(formData, "paid_on"),
-    amount: toFcfa(value(formData, "amount_fcfa")),
+    amountInr: toAmount(value(formData, "amount_inr")),
     method: value(formData, "payment_method"),
+    financialYear: Number(value(formData, "financial_year")),
+    allocations: (() => { try { return JSON.parse(value(formData, "allocations_json")); } catch { return null; } })(),
     note: value(formData, "note"),
   });
   if (!parsed.success) redirect(`${path}?erreur=paiement-invalide`);
-  const { error } = await supabase.rpc("record_contribution_payment", {
+  if (parsed.data.allocations.reduce((sum, item) => sum + item.amount_inr, 0) !== parsed.data.amountInr) redirect(`${path}?erreur=repartition-invalide`);
+  const { data, error } = await supabase.rpc("record_contribution_payment_manual", {
     p_member_id: parsed.data.memberId,
     p_paid_on: parsed.data.paidOn,
-    p_amount_fcfa: parsed.data.amount,
+    p_amount_inr: parsed.data.amountInr,
     p_payment_method: parsed.data.method,
+    p_financial_year: parsed.data.financialYear,
+    p_allocations: parsed.data.allocations,
     p_note: parsed.data.note || null,
   });
-  if (error) redirect(`${path}?erreur=paiement-impossible`);
+  if (error) redirect(`${path}?annee=${parsed.data.financialYear}&erreur=${error.code === "23514" ? "repartition-invalide" : "paiement-impossible"}`);
+  const reference = data?.[0]?.payment_reference;
   revalidatePath("/gestion-financiere");
   revalidatePath("/gestion-financiere/cotisations");
   revalidatePath("/gestion-financiere/operations");
   revalidatePath("/finances");
   revalidatePath("/espace-membre/cotisations");
-  redirect(`${path}?statut=paiement-enregistre`);
+  redirect(`${path}?annee=${parsed.data.financialYear}&statut=paiement-enregistre${reference ? `&reference=${encodeURIComponent(reference)}` : ""}`);
 }
 
 export async function publishFinancialReportAction(formData: FormData) {
@@ -227,9 +234,13 @@ export async function publishFinancialReportAction(formData: FormData) {
     summary: value(formData, "summary"),
   });
   if (!parsed.success || parsed.data.periodEnd < parsed.data.periodStart) redirect(`${path}?erreur=rapport-invalide`);
-  const { data: summaries, error: summaryError } = await supabase.rpc("get_financial_summary", { p_from: parsed.data.periodStart, p_to: parsed.data.periodEnd });
+  const [{ data: summaries, error: summaryError }, { data: currencySummaries, error: currencySummaryError }] = await Promise.all([
+    supabase.rpc("get_financial_summary", { p_from: parsed.data.periodStart, p_to: parsed.data.periodEnd }),
+    supabase.rpc("get_financial_summary_by_currency", { p_from: parsed.data.periodStart, p_to: parsed.data.periodEnd }),
+  ]);
   const summary = summaries?.[0];
-  if (summaryError || !summary) redirect(`${path}?erreur=publication-impossible`);
+  const inrSummary = (currencySummaries as Array<{ currency_code: string; total_income: number; total_expense: number; net_balance: number }> | null)?.find((item) => item.currency_code === "INR");
+  if (summaryError || currencySummaryError || !summary || !inrSummary) redirect(`${path}?erreur=publication-impossible`);
 
   const { error: insertError } = await supabase.from("financial_reports").insert({
     title: parsed.data.title,
@@ -242,6 +253,9 @@ export async function publishFinancialReportAction(formData: FormData) {
     total_income_fcfa: summary.total_income_fcfa,
     total_expense_fcfa: summary.total_expense_fcfa,
     net_balance_fcfa: summary.net_balance_fcfa,
+    total_income_inr: inrSummary.total_income,
+    total_expense_inr: inrSummary.total_expense,
+    net_balance_inr: inrSummary.net_balance,
     transaction_count: summary.transaction_count,
     created_by: user.id,
   });
