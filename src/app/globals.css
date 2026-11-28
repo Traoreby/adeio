@@ -908,6 +908,19 @@ a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visibl
 .admin-nav a { min-height: 44px; padding: 10px 11px; color: #45534a; font-size: 15px; line-height: 1.25; }
 .admin-nav a svg { flex: 0 0 auto; }
 .admin-nav a[aria-current="page"] { background: #edf6ef; color: #006b40; box-shadow: inset 3px 0 #f77f00; font-weight: 750; }
+.reference-readonly { display: flex; align-items: center; min-height: 48px; padding: 10px 12px; border: 1px solid #dce5de; border-radius: 10px; background: #f8faf8; color: #24352a; font-size: 15px; }
+.reference-edit-row { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.finance-plan-card { display: grid; gap: 14px; padding: 18px; border: 1px solid #dce6df; border-radius: 14px; background: #fff; }
+.finance-plan-card .admin-card-heading { margin: 0; }
+.finance-plan-card h3 { margin: 0; color: #203329; font-size: 18px; }
+.tariff-request { padding-top: 12px; border-top: 1px solid #e3e9e4; }
+.tariff-request summary { cursor: pointer; color: #006b40; font-weight: 700; }
+.tariff-review-actions { display: flex; flex-wrap: wrap; gap: 10px; min-width: 0; }
+.tariff-review-actions form { display: flex; flex-wrap: wrap; gap: 8px; min-width: min(100%, 260px); }
+.tariff-review-actions input { min-width: 140px; flex: 1; }
+.tariff-requests { display: grid; gap: 12px; margin-top: 20px; }
+.tariff-requests > h3 { margin: 0; }
+@media (max-width: 680px) { .reference-edit-row { grid-template-columns: minmax(0, 1fr); } .finance-plan-card { padding: 14px; } }
 .admin-user { gap: 11px; margin-top: 20px; }
 .admin-user strong { max-width: 100%; color: #26322b; font-size: 13px; }
 .admin-user small { color: #4c5b51; font-size: 14px; }

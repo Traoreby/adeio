@@ -235,7 +235,7 @@ export async function updateMemberAction(formData: FormData) {
     p_sex: sex, p_status: input.status, p_user_id: input.userId || null,
     p_photo_public_consent: input.photoConsent,
   });
-  if (error) redirect(`${nextPath}?erreur=${encodeURIComponent(error.code === "42501" ? "utiliser-reactivation" : "modification-impossible")}`);
+  if (error) redirect(`${nextPath}?erreur=${encodeURIComponent(error.code === "42501" ? "utiliser-reactivation" : error.message.includes("filière active") || error.message.includes("établissement actif") ? "reference-invalide" : "modification-impossible")}`);
   revalidatePath("/admin/membres"); revalidatePath("/admin/archives"); revalidatePath("/membres"); revalidatePath("/archives"); revalidatePath(nextPath);
   redirect(`${nextPath}?statut=membre-modifie`);
 }

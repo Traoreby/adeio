@@ -15,7 +15,7 @@ async function requireFinanceUser(path: string) {
     redirect("/espace-membre?erreur=acces-refuse");
   }
   if (!await hasRequiredMfa(supabase, user.id)) redirect(`/auth/mfa?next=${encodeURIComponent(path)}`);
-  return { supabase, user };
+  return { supabase, user, roles };
 }
 
 function value(formData: FormData, key: string) {
@@ -135,30 +135,56 @@ export async function createFinancialTransactionAction(formData: FormData) {
 
 export async function createContributionPlanAction(formData: FormData) {
   const path = "/gestion-financiere/cotisations";
-  const { supabase, user } = await requireFinanceUser(path);
+  const { supabase, roles } = await requireFinanceUser(path);
+  if (!roles.some((role) => role === "treasurer" || role === "super_admin")) redirect("/espace-membre?erreur=acces-refuse");
   const parsed = z.object({
-    name: z.string().trim().min(3).max(120),
+    termId: z.string().uuid(),
     amountInr: z.number().int().positive().max(1_000_000_000_000),
-    financialYear: z.number().int().min(1900).max(2200),
   }).safeParse({
-    name: value(formData, "name"),
+    termId: value(formData, "term_id"),
     amountInr: toAmount(value(formData, "amount_inr")),
-    financialYear: Number(value(formData, "financial_year")),
   });
   if (!parsed.success) redirect(`${path}?erreur=plan-invalide`);
-  const { error } = await supabase.from("contribution_plans").insert({
-    name: parsed.data.name,
-    amount_inr: parsed.data.amountInr,
-    currency_code: "INR",
-    periodicity: "monthly",
-    custom_period_days: null,
-    starts_on: `${parsed.data.financialYear}-01-01`,
-    ends_on: `${parsed.data.financialYear}-12-31`,
-    created_by: user.id,
-  });
-  if (error) redirect(`${path}?erreur=plan-invalide`);
+  const { error } = await supabase.rpc("create_contribution_plan_for_term", { p_term_id: parsed.data.termId, p_amount_inr: parsed.data.amountInr });
+  if (error) redirect(`${path}?erreur=${error.code === "23505" ? "plan-deja-existant" : "plan-invalide"}`);
   revalidatePath(path);
   redirect(`${path}?statut=plan-cree`);
+}
+
+export async function activateContributionPlanAction(formData: FormData) {
+  const path = "/gestion-financiere/cotisations";
+  const { supabase } = await requireFinanceUser(path);
+  const planId = value(formData, "plan_id");
+  if (!z.string().uuid().safeParse(planId).success) redirect(`${path}?erreur=plan-invalide`);
+  const { error } = await supabase.rpc("set_contribution_plan_active", { p_plan_id: planId });
+  if (error) redirect(`${path}?erreur=plan-invalide`);
+  revalidatePath(path);
+  redirect(`${path}?statut=plan-active`);
+}
+
+export async function requestContributionTariffChangeAction(formData: FormData) {
+  const path = "/gestion-financiere/cotisations";
+  const { supabase } = await requireFinanceUser(path);
+  const parsed = z.object({ planId: z.string().uuid(), newAmount: z.number().int().positive().max(1_000_000_000_000), effectiveFrom: z.string().date(), reason: z.string().trim().min(5).max(1000) }).safeParse({
+    planId: value(formData, "plan_id"), newAmount: toAmount(value(formData, "new_amount_inr")), effectiveFrom: value(formData, "effective_from"), reason: value(formData, "reason"),
+  });
+  if (!parsed.success) redirect(`${path}?erreur=tarif-invalide`);
+  const { error } = await supabase.rpc("create_contribution_tariff_change_request", { p_plan_id: parsed.data.planId, p_new_amount_inr: parsed.data.newAmount, p_effective_from: parsed.data.effectiveFrom, p_reason: parsed.data.reason });
+  if (error) redirect(`${path}?erreur=tarif-invalide`);
+  revalidatePath(path);
+  redirect(`${path}?statut=tarif-demande`);
+}
+
+export async function reviewContributionTariffChangeAction(formData: FormData) {
+  const path = "/gestion-financiere/cotisations";
+  const { supabase, roles } = await requireFinanceUser(path);
+  if (!roles.includes("super_admin")) redirect("/espace-membre?erreur=acces-refuse");
+  const parsed = z.object({ requestId: z.string().uuid(), approve: z.enum(["true", "false"]), note: z.string().max(1000) }).safeParse({ requestId: value(formData, "request_id"), approve: value(formData, "approve"), note: value(formData, "review_note") });
+  if (!parsed.success) redirect(`${path}?erreur=tarif-invalide`);
+  const { error } = await supabase.rpc("review_contribution_tariff_change", { p_request_id: parsed.data.requestId, p_approve: parsed.data.approve === "true", p_review_note: parsed.data.note || null });
+  if (error) redirect(`${path}?erreur=tarif-invalide`);
+  revalidatePath(path);
+  redirect(`${path}?statut=${parsed.data.approve === "true" ? "tarif-approuve" : "tarif-refuse"}`);
 }
 
 export async function generateContributionDuesAction(formData: FormData) {

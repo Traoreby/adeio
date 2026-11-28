@@ -79,6 +79,8 @@ export async function saveOwnMemberProfileAction(_previous: MemberProfileActionR
       p_sex: input.sex || null,
     });
     if (saveError || !memberId) {
+      if (saveError?.message?.includes("filière active")) return { error: "Choisissez une filière active dans la liste. Si elle manque, contactez l’administration ADEIO." };
+      if (saveError?.message?.includes("établissement actif")) return { error: "Choisissez un établissement actif dans la liste. Si celui-ci manque, contactez l’administration ADEIO." };
       if (saveError?.message?.includes("arrivée à échéance")) return { error: "Votre année de fin de cycle est atteinte. Seule l’administration peut décider d’une réactivation." };
       if (saveError?.message?.includes("années validées")) return { error: "Vos années ont été validées et sont verrouillées. Contactez le Super Admin pour demander une correction." };
       if (saveError?.code === "42501") return { error: "Aucun dossier ADEIO en attente n’est associé à ce compte. Contactez l’administration." };

@@ -19,6 +19,7 @@ const adminItems = [
   { href: "/securite", label: "Sécurité du compte", icon: LockKeyhole },
   { href: "/admin/utilisateurs", label: "Utilisateurs et rôles", icon: ShieldCheck, superOnly: true },
   { href: "/admin/audit", label: "Journal d’audit", icon: ScrollText, superOnly: true },
+  { href: "/admin/parametres/referentiels", label: "Référentiels", icon: Settings2, superOnly: true },
 ];
 
 const financeItems = [
@@ -34,12 +35,12 @@ export function ActiveSidebarNav({ kind, roles }: { kind: "admin" | "finance"; r
     ? financeItems
     : adminItems.filter((item) => (!item.superOnly || roles.includes("super_admin")) && (!item.financeOnly || roles.some((role) => ["treasurer", "auditor", "super_admin"].includes(role))));
   const visibleItems = kind === "admin" && roles.includes("super_admin")
-    ? [...items, { href: "/admin/parametres", label: "Paramètres", icon: Settings2 }]
+    ? [...items, { href: "/admin/parametres", label: "Paramètres", icon: Settings2, superOnly: true }]
     : items;
 
   return <nav className="admin-nav" aria-label={kind === "finance" ? "Navigation financière" : "Navigation administration"}>
     {visibleItems.map(({ href, label, icon: Icon }) => {
-      const exactOnly = href === "/admin" || href === "/gestion-financiere";
+      const exactOnly = href === "/admin" || href === "/gestion-financiere" || href === "/admin/parametres";
       const active = pathname === href || (!exactOnly && pathname.startsWith(`${href}/`));
       return <Link href={href} prefetch="auto" key={href} className={active ? "active" : undefined} aria-current={active ? "page" : undefined}>
         <Icon size={18} aria-hidden="true" /><span>{label}</span>
