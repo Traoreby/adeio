@@ -12,7 +12,7 @@ export default async function MyContributionsPage() {
   if (!member) return <section className="member-space-page section-pad"><div className="container member-space-empty"><h1>Fiche membre non associée</h1><p>Demandez à l’administration de relier votre compte à votre fiche ADEIO.</p><Link href="/espace-membre" className="text-link"><ArrowLeft size={14} /> Retour à mon espace</Link></div></section>;
   const { data: dues } = await supabase.from("contribution_dues").select("id,period_start,period_end,due_on,amount_due_inr,is_not_concerned,contribution_plans(name),contribution_allocations(amount_inr,contribution_payments(paid_on))").eq("member_id", member.id).eq("currency_code", "INR").order("due_on", { ascending: false }).limit(480);
   const rows = (dues ?? []).map((due) => {
-    const paid = (due.contribution_allocations ?? []).reduce((sum, allocation) => sum + Number(allocation.amount_inr ?? 0), 0);
+    const paid = due.is_not_concerned ? 0 : (due.contribution_allocations ?? []).reduce((sum, allocation) => sum + Number(allocation.amount_inr ?? 0), 0);
     const amountDue = due.is_not_concerned ? 0 : Number(due.amount_due_inr ?? 0);
     return { ...due, amountDue, paid, remaining: Math.max(0, amountDue - paid) };
   });

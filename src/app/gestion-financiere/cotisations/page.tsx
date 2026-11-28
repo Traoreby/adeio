@@ -21,16 +21,18 @@ export default async function FinanceContributionsPage({ searchParams }: Props) 
   const pageSize = 50;
   const validStatus = ["up_to_date", "partial", "overdue"].includes(params.situation ?? "") ? params.situation! : null;
   const search = params.q?.trim().slice(0, 80) ?? "";
-  const [{ data: plans }, { data: members }, { data: ledger }, { data: totalsRows }] = await Promise.all([
+  const [{ data: plans }, { data: members }, { data: ledger }, { data: totalsRows }, { data: monthTotalsRows }] = await Promise.all([
     supabase.from("contribution_plans").select("id,name,amount_inr,starts_on,ends_on,is_active").eq("currency_code", "INR").order("starts_on", { ascending: false }).limit(50),
     supabase.rpc("get_finance_contribution_members", { p_year: year, p_member_id: null }),
     supabase.rpc("get_contribution_year_summary", { p_year: year, p_search: search || null, p_status: validStatus, p_limit: pageSize, p_offset: (page - 1) * pageSize }),
     supabase.rpc("get_contribution_year_totals", { p_year: year }),
+    supabase.rpc("get_contribution_month_status_totals", { p_year: year }),
   ]);
   const eligibleMembers = (members ?? []) as MemberOption[];
   const rows = (ledger ?? []) as LedgerMember[];
   const totalCount = rows[0]?.total_count ?? 0;
   const totals = totalsRows?.[0];
+  const monthTotals = monthTotalsRows?.[0];
   const alerts: Record<string, string> = {
     "plan-invalide": "Vérifiez le nom, le montant et l’année financière.",
     "generation-impossible": "Les échéances mensuelles n’ont pas pu être générées.",
@@ -50,6 +52,8 @@ export default async function FinanceContributionsPage({ searchParams }: Props) 
       <div className="admin-stat"><span>Total restant à payer</span><strong>{formatInr(Math.max(0, Number(totals?.total_claim_inr ?? 0) - Number(totals?.total_paid_inr ?? 0)))}</strong></div>
       <div className="admin-stat"><span>Membres à jour</span><strong>{totals?.up_to_date_members ?? 0}</strong></div>
       <div className="admin-stat"><span>Membres avec un solde</span><strong>{totals?.members_with_balance ?? 0}</strong></div>
+      <div className="admin-stat"><span>Mois impayés</span><strong>{monthTotals?.unpaid_months ?? 0}</strong></div>
+      <div className="admin-stat"><span>Mois partiellement payés</span><strong>{monthTotals?.partially_paid_months ?? 0}</strong></div>
     </div>
 
     <div className="contribution-toolbox">
